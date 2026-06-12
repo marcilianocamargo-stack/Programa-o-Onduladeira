@@ -1,0 +1,884 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0f1e2e">
+<title>Programação Onduladeira — Prime</title>
+<link rel="manifest" href="data:application/manifest+json;base64,eyJuYW1lIjogIlByb2dyYW1hXHUwMGU3XHUwMGUzbyBPbmR1bGFkZWlyYSBQcmltZSIsICJzaG9ydF9uYW1lIjogIk9uZHVsYWRlaXJhIiwgInN0YXJ0X3VybCI6ICIuIiwgImRpc3BsYXkiOiAic3RhbmRhbG9uZSIsICJiYWNrZ3JvdW5kX2NvbG9yIjogIiMwZjFlMmUiLCAidGhlbWVfY29sb3IiOiAiIzFhM2E1YyIsICJpY29ucyI6IFt7InNyYyI6ICJkYXRhOmltYWdlL3N2Zyt4bWw7YmFzZTY0LFBITjJaeUI0Yld4dWN6MGlhSFIwY0RvdkwzZDNkeTUzTXk1dmNtY3ZNakF3TUM5emRtY2lJSFpwWlhkQ2IzZzlJakFnTUNBeE1EQWdNVEF3SWo0S1BISmxZM1FnZDJsa2RHZzlJakV3TUNJZ2FHVnBaMmgwUFNJeE1EQWlJSEo0UFNJeE9DSWdabWxzYkQwaUl6Qm1NV1V5WlNJdlBnbzhjR0YwYUNCa1BTSk5NVFFnTmpJZ2NUa2dMVEUySURFNElEQWdkREU0SURBZ2RERTRJREFnZERFNElEQWlJSE4wY205clpUMGlJelJoTjJSaU15SWdjM1J5YjJ0bExYZHBaSFJvUFNJM0lpQm1hV3hzUFNKdWIyNWxJaUJ6ZEhKdmEyVXRiR2x1WldOaGNEMGljbTkxYm1RaUx6NEtQSEpsWTNRZ2VEMGlNVFFpSUhrOUlqTTBJaUIzYVdSMGFEMGlOeklpSUdobGFXZG9kRDBpTnlJZ2NuZzlJak11TlNJZ1ptbHNiRDBpSTJabVptWm1aaUl2UGdvOGNtVmpkQ0I0UFNJeE5DSWdlVDBpTnpJaUlIZHBaSFJvUFNJM01pSWdhR1ZwWjJoMFBTSTNJaUJ5ZUQwaU15NDFJaUJtYVd4c1BTSWpabVptWm1abUlpOCtDand2YzNablBnbz0iLCAic2l6ZXMiOiAiYW55IiwgInR5cGUiOiAiaW1hZ2Uvc3ZnK3htbCIsICJwdXJwb3NlIjogImFueSJ9XX0=">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Barlow:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+:root{
+  --papel:#eef2f7; --cartao:#ffffff; --tinta:#0f1e2e; --tinta2:#51637a;
+  --kraft:#1a3a5c; --kraft-claro:#dbe7f3; --linha:#ccd8e4;
+  --ok:#2e7d4f; --alerta:#c23b22; --alerta-bg:#fbeae6; --ok-bg:#e8f3ec;
+  --azul:#1a3a5c;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{-webkit-text-size-adjust:100%}
+body{padding-bottom:30px}
+body{font-family:'Barlow',system-ui,sans-serif;background:var(--papel);color:var(--tinta);
+  font-size:15px;line-height:1.45}
+h1,h2,h3,.disp{font-family:'Barlow Condensed','Barlow',sans-serif}
+header{background:var(--tinta);color:#fff;padding:12px 16px calc(10px);
+  display:flex;align-items:baseline;justify-content:space-between;gap:8px;
+  position:sticky;top:0;z-index:20}
+header h1{font-size:21px;font-weight:700;letter-spacing:.04em;text-transform:uppercase}
+header h1 small{color:#6ea8dc;font-weight:600}
+#velChip{font-family:'Barlow Condensed';font-size:15px;font-weight:600;color:#fff;
+  border:1px solid #2c4a6b;border-radius:99px;padding:2px 12px;background:transparent}
+main{max-width:760px;margin:0 auto;padding:14px 12px 30px}
+.tabbar{position:sticky;top:46px;z-index:20;background:var(--tinta);
+  display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;padding:0 12px 10px}
+.tabbar button{border:0;border-radius:8px;padding:9px 4px;
+  font-family:'Barlow Condensed';font-size:15px;font-weight:600;letter-spacing:.03em;
+  color:#cfe0f0;text-transform:uppercase;cursor:pointer}
+.tabbar button{background:#16314d}
+.tabbar button.on{color:#fff;background:var(--azul);box-shadow:inset 0 0 0 1.5px #4a7db3}
+.pane{display:none}.pane.on{display:block}
+
+.card{background:var(--cartao);border:1px solid var(--linha);border-radius:10px;
+  padding:14px;margin-bottom:12px}
+label{display:block;font-size:12.5px;font-weight:600;color:var(--tinta2);
+  text-transform:uppercase;letter-spacing:.04em;margin:10px 0 3px}
+input,select,textarea{width:100%;padding:9px 10px;border:1px solid var(--linha);
+  border-radius:7px;font:inherit;background:#fff;color:var(--tinta)}
+input:focus,select:focus{outline:2px solid var(--kraft);outline-offset:0;border-color:var(--kraft)}
+.row{display:flex;gap:10px}.row>*{flex:1;min-width:0}
+.btn{display:inline-block;border:0;border-radius:8px;padding:11px 18px;cursor:pointer;
+  font-family:'Barlow Condensed';font-size:17px;font-weight:600;letter-spacing:.04em;
+  text-transform:uppercase;background:var(--kraft);color:#fff}
+.btn.sec{background:transparent;color:var(--tinta);border:1.5px solid var(--tinta)}
+.btn.mini{padding:6px 12px;font-size:14px}
+.btn.perigo{background:var(--alerta)}
+.btn:disabled{opacity:.45}
+.acoes{display:flex;gap:10px;margin-top:14px;flex-wrap:wrap}
+
+/* régua de bobina — assinatura visual */
+.regua{margin:12px 0 4px}
+.regua .barra{position:relative;height:46px;background:
+  repeating-linear-gradient(90deg,var(--kraft-claro) 0 6px,#eaf1f9 6px 12px);
+  border:1.5px solid var(--kraft);border-radius:6px;overflow:hidden}
+.regua .chapa{position:absolute;top:0;bottom:0;background:var(--kraft);opacity:.85;
+  border-right:2px solid #fff}
+.regua .chapa span{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+  color:#fff;font-family:'Barlow Condensed';font-weight:600;font-size:14px}
+.regua .legenda{display:flex;justify-content:space-between;font-size:12.5px;color:var(--tinta2);margin-top:4px}
+.regua .legenda b{color:var(--tinta)}
+
+.rolagem{max-height:235px;overflow-y:auto;margin-top:6px;border:1px solid var(--linha);border-radius:8px}
+.tbArr{font-size:13.5px}
+.tbArr th{position:sticky;top:0;background:var(--cartao)}
+.tbArr tbody tr{cursor:pointer}
+.tbArr tr.best td{font-weight:600}
+.tbArr tr.best td:first-child::after{content:" ★";color:var(--kraft)}
+.tbArr tr.sel{background:var(--kraft-claro)}
+
+.resumo{display:grid;grid-template-columns:repeat(auto-fit,minmax(105px,1fr));gap:8px;margin-top:12px}
+.resumo .m{background:var(--papel);border:1px solid var(--linha);border-radius:8px;padding:8px 10px}
+.resumo .m b{display:block;font-family:'Barlow Condensed';font-size:20px;font-weight:700;line-height:1.1}
+.resumo .m span{font-size:11.5px;color:var(--tinta2);text-transform:uppercase;letter-spacing:.03em}
+
+.aviso{border-radius:8px;padding:10px 12px;margin-top:12px;font-size:14px;border:1px solid}
+.aviso.ruim{background:var(--alerta-bg);border-color:#e8b3a8;color:#7c2415}
+.aviso.bom{background:var(--ok-bg);border-color:#bcd9c6;color:#1d5436}
+
+/* lista de programação */
+.dia{margin-bottom:18px}
+.dia>h2{font-size:19px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;
+  border-bottom:2px solid var(--tinta);padding-bottom:4px;margin-bottom:8px;
+  display:flex;justify-content:space-between;align-items:baseline}
+.dia>h2 small{font-family:'Barlow';font-size:12.5px;font-weight:500;color:var(--tinta2);text-transform:none}
+.of{background:var(--cartao);border:1px solid var(--linha);border-left:5px solid var(--kraft);
+  border-radius:8px;padding:10px 12px;margin-bottom:8px}
+.of.cancelada{border-left-color:var(--alerta);opacity:.62}
+.of.cancelada .l1 b{color:var(--alerta);text-decoration:line-through}
+.of .l1{display:flex;justify-content:space-between;gap:8px;align-items:baseline}
+.of .l1 b{font-family:'Barlow Condensed';font-size:18px;font-weight:700}
+.of .l1 .num{font-family:'Barlow Condensed';font-weight:600;color:var(--tinta2)}
+.of .l2{font-size:13.5px;color:var(--tinta2);margin-top:2px}
+.of .l3{display:flex;gap:6px;flex-wrap:wrap;margin-top:7px}
+.tag{font-size:12px;font-weight:600;background:var(--papel);border:1px solid var(--linha);
+  border-radius:5px;padding:2px 7px;white-space:nowrap}
+.tag.col-ok{background:var(--ok-bg);border-color:#bcd9c6;color:var(--ok)}
+.tag.col-ruim{background:var(--alerta-bg);border-color:#e8b3a8;color:var(--alerta)}
+.tag.cancel{background:var(--alerta);color:#fff;border-color:var(--alerta)}
+.of .ops{display:flex;gap:14px;margin-top:8px}
+.of .ops button{border:0;background:none;color:var(--azul);font-size:13px;font-weight:600;
+  cursor:pointer;padding:0;text-transform:uppercase;letter-spacing:.03em}
+.of .ops button.del{color:var(--alerta)}
+.totais{background:var(--tinta);color:#fff;border-radius:8px;padding:10px 14px;
+  display:flex;gap:18px;flex-wrap:wrap;margin-top:4px}
+.totais div b{display:block;font-family:'Barlow Condensed';font-size:19px;font-weight:700}
+.totais div span{font-size:11px;text-transform:uppercase;letter-spacing:.04em;opacity:.75}
+.vazio{text-align:center;color:var(--tinta2);padding:40px 20px;font-size:14.5px}
+
+/* tabelas */
+table{width:100%;border-collapse:collapse;font-size:13.5px}
+th{font-family:'Barlow Condensed';font-size:13.5px;font-weight:600;text-transform:uppercase;
+  letter-spacing:.03em;text-align:left;color:var(--tinta2);border-bottom:2px solid var(--tinta);
+  padding:5px 6px}
+td{border-bottom:1px solid var(--linha);padding:5px 6px;vertical-align:middle}
+td input{padding:5px 6px;font-size:13.5px}
+.est{color:var(--alerta);font-size:11px;font-weight:700}
+details{margin-bottom:12px}
+summary{cursor:pointer;font-family:'Barlow Condensed';font-size:18px;font-weight:700;
+  text-transform:uppercase;letter-spacing:.04em;padding:10px 0;
+  border-bottom:2px solid var(--tinta);list-style:none;display:flex;justify-content:space-between}
+summary::after{content:"+";font-size:22px;color:var(--kraft)}
+details[open] summary::after{content:"–"}
+details .corpo{padding:10px 0}
+.nota{font-size:12.5px;color:var(--tinta2);margin-top:6px}
+
+@media print{
+  header,.tabbar,.acoes,.of .ops,#paneNova,#paneTab{display:none!important}
+  body{background:#fff;padding:0}
+  .of{break-inside:avoid}
+}
+</style>
+</head>
+<body>
+<header>
+  <h1>Onduladeira <small>· Prime</small></h1>
+  <button id="velChip" onclick="trocaAba('tab')" title="Velocidade de produção">60 m/min</button>
+</header>
+<nav class="tabbar">
+  <button id="tabProg" class="on" onclick="trocaAba('prog')">Programação</button>
+  <button id="tabNova" onclick="trocaAba('nova')">Nova OF</button>
+  <button id="tabTab" onclick="trocaAba('tab')">Tabelas</button>
+</nav>
+
+<main>
+  <!-- PROGRAMAÇÃO -->
+  <section class="pane" id="paneProg">
+    <div id="listaProg"></div>
+    <div class="acoes">
+      <button class="btn" onclick="exportaXLSX()">Exportar Excel</button>
+      <button class="btn sec" onclick="window.print()">Imprimir</button>
+    </div>
+  </section>
+
+  <!-- NOVA OF -->
+  <section class="pane" id="paneNova">
+    <form id="formOF" onsubmit="return salvaOF(event)">
+      <div class="card">
+        <input type="hidden" id="fEditId">
+        <div class="row">
+          <div><label>Data de produção</label><input type="date" id="fData" required></div>
+          <div><label>Nº da OF</label><input type="number" id="fOF" inputmode="numeric" required></div>
+        </div>
+        <label>Cliente</label>
+        <input id="fCliente" list="dlClientes" autocomplete="off" required>
+        <datalist id="dlClientes"></datalist>
+        <div class="row">
+          <div><label>Produto</label><select id="fProduto" onchange="aoMudarProduto()"></select></div>
+          <div><label>Quantidade de chapas</label><input type="number" id="fQtde" inputmode="numeric" min="1" required></div>
+        </div>
+        <div class="row">
+          <div><label>Largura (mm)</label><input type="number" id="fLarg" inputmode="numeric" min="1" required oninput="recalcula()"></div>
+          <div><label>Comprimento / facão (mm)</label><input type="number" id="fCompr" inputmode="numeric" min="1" required oninput="recalcula()"></div>
+        </div>
+        <label>Slitter / vincadeira (mm, ex.: 147x118x294x118x147 — "x" se liso)</label>
+        <input id="fVinco" value="x" oninput="recalcula()">
+        <div id="avisoVinco"></div>
+        <div id="avisoLimites"></div>
+      </div>
+
+      <div class="card">
+        <h3 style="font-size:17px;text-transform:uppercase;letter-spacing:.04em">Arranjos por formato de bobina</h3>
+        <div class="rolagem" id="opcoesBobina"></div>
+        <div class="row" style="margin-top:8px">
+          <div><label>Arranjo (facas)</label><input type="number" id="fArranjo" min="1" max="6" value="1" oninput="recalcula()"></div>
+          <div><label>Formato da bobina (mm)</label><input type="number" id="fBobina" inputmode="numeric" oninput="recalcula()"></div>
+        </div>
+        <div class="regua" id="regua"></div>
+      </div>
+
+      <div class="card">
+        <h3 style="font-size:17px;text-transform:uppercase;letter-spacing:.04em">Composição de papéis</h3>
+        <div id="camposPapeis"></div>
+        <div id="avisoColuna"></div>
+      </div>
+
+      <div class="card">
+        <div class="row">
+          <div><label>Paletes (qtde)</label><input type="number" id="fPalQtde" inputmode="numeric" min="0"></div>
+          <div><label>Palete (medida LxC)</label><input id="fPalMed" placeholder="Padrão"></div>
+        </div>
+        <div class="resumo" id="resumoCalc"></div>
+      </div>
+
+      <div class="acoes">
+        <button class="btn" type="submit" id="btnSalvar">Registrar OF</button>
+        <button class="btn sec" type="button" onclick="limpaForm()">Limpar</button>
+      </div>
+    </form>
+  </section>
+
+  <!-- TABELAS / PARÂMETROS -->
+  <section class="pane" id="paneTab">
+    <details open>
+      <summary>Parâmetros</summary>
+      <div class="corpo card">
+        <div class="row">
+          <div><label>Velocidade (m/min)</label><input type="number" id="pVel" min="1"></div>
+          <div><label>Fator do miolo</label><input type="number" id="pFator" step="0.01"></div>
+        </div>
+        <div class="row">
+          <div><label>Cola simples (g/m²)</label><input type="number" id="pColaS"></div>
+          <div><label>Cola dupla (g/m²)</label><input type="number" id="pColaD"></div>
+        </div>
+        <label>Formatos de bobina disponíveis (mm, separados por vírgula)</label>
+        <input id="pFormatos">
+        <div class="row">
+          <div><label>Larg. mín. chapa</label><input type="number" id="pLargMin"></div>
+          <div><label>Larg. máx. chapa</label><input type="number" id="pLargMax"></div>
+        </div>
+        <div class="row">
+          <div><label>Compr. mín.</label><input type="number" id="pComprMin"></div>
+          <div><label>Compr. máx.</label><input type="number" id="pComprMax"></div>
+          <div><label>Vinco mín.</label><input type="number" id="pVincoMin"></div>
+        </div>
+        <div class="acoes"><button class="btn mini" onclick="salvaParams()">Salvar parâmetros</button></div>
+      </div>
+    </details>
+
+    <details>
+      <summary>Papéis (RCT)</summary>
+      <div class="corpo">
+        <table id="tbPapeis"><thead><tr><th>Papel</th><th>g/m²</th><th>RCT kgf</th><th></th></tr></thead><tbody></tbody></table>
+        <p class="nota">RCT marcado com <span class="est">est.</span> é estimado — confirme com o fornecedor e corrija aqui. Os valores valem para a coluna teórica de todas as OFs.</p>
+        <div class="acoes"><button class="btn mini" onclick="addPapel()">Adicionar papel</button></div>
+      </div>
+    </details>
+
+    <details>
+      <summary>Produtos e receitas</summary>
+      <div class="corpo">
+        <div id="listaProdutos"></div>
+      </div>
+    </details>
+
+    <details>
+      <summary>Dados</summary>
+      <div class="corpo card">
+        <p class="nota">As OFs e tabelas ficam salvas neste aparelho (localStorage). Faça backup exportando o Excel ou o arquivo de dados.</p>
+        <div class="acoes">
+          <button class="btn mini sec" onclick="exportaJSON()">Backup dos dados</button>
+          <button class="btn mini sec" onclick="document.getElementById('impJSON').click()">Restaurar backup</button>
+          <input type="file" id="impJSON" accept=".json" style="display:none" onchange="importaJSON(this)">
+          <button class="btn mini perigo" onclick="zeraTudo()">Apagar tudo</button>
+        </div>
+      </div>
+    </details>
+  </section>
+</main>
+
+
+<script>
+/* Programação Onduladeira Prime — lógica
+   Regras consolidadas com Marciliano (jun/2026):
+   - m² = compr × larg × qtde (metros)
+   - ML = qtde × compr ÷ arranjo (metros de bobina)
+   - Min prod = ML ÷ arranjo ÷ velocidade (cada passada entrega "arranjo" chapas)
+   - Largura útil = larg × arranjo; Ponta = bobina − útil; Refile % = ponta ÷ bobina
+   - Coluna teórica = (RCT capa + RCT miolo×fator + RCT interna) ÷ 10 (dupla: dois miolos×fator)
+   - Fator do miolo: 1,30 para QUALQUER onda (regra prática da fábrica)
+   - Gramatura da chapa = Σ camadas (miolos×fator) + cola (15 simples / 20 dupla)
+   - kg = m² × gramatura ÷ 1000
+   - Coluna abaixo do mínimo: ALERTA, não bloqueia
+   - Sugestão de bobina: menor formato com ponta ≥ 20 mm
+   - Canceladas: vermelho, fora dos somatórios                                  */
+
+const KEY = 'prime_of_v1';
+
+const SEED = {
+  params: { velocidade: 60, fatorMiolo: 1.3, colaSimples: 15, colaDupla: 20,
+    formatos: Array.from({ length: 19 }, (_, i) => 700 + i * 50),  // 700 a 1600, de 50 em 50
+    limites: { largMin: 300, largMax: 1370, comprMin: 0, comprMax: 3000, vincoMin: 50 } },
+  papeis: [
+    { cod: 'TLQ95',  g: 95,  rct: 11 },
+    { cod: 'TPQ100', g: 100, rct: 8 },
+    { cod: 'TLQ100', g: 100, rct: 8,  est: true },
+    { cod: 'TLQ110', g: 110, rct: 15 },
+    { cod: 'TLQ120', g: 120, rct: 19, est: true },
+    { cod: 'TLQ125', g: 125, rct: 19 },
+    { cod: 'TLQ135', g: 135, rct: 21, est: true },
+    { cod: 'TLQ140', g: 140, rct: 24 },
+    { cod: 'TLQ145', g: 145, rct: 24, est: true },
+    { cod: 'TLQ165', g: 165, rct: 27 },
+    { cod: 'TLQ170', g: 170, rct: 28, est: true },
+    { cod: 'Mi100',  g: 100, rct: 8 },
+    { cod: 'Ms100',  g: 100, rct: 11 },
+    { cod: 'Ms110',  g: 110, rct: 14 },
+    { cod: 'Ms145',  g: 145, rct: 23 },
+    { cod: 'Ms165',  g: 165, rct: 25 },
+    { cod: 'WTL120', g: 120, rct: 19 },
+    { cod: 'WTL150', g: 150, rct: 24 },
+    { cod: 'KSZ100', g: 100, rct: 12 },
+    { cod: 'KSZ110', g: 110, rct: 15 },
+    { cod: 'KSZ125', g: 125, rct: 17 },
+    { cod: 'KSZ145', g: 145, rct: 24 },
+    { cod: 'KSZ170', g: 170, rct: 31 },
+    { cod: 'PQi100', g: 100, rct: 10, est: true },
+    { cod: 'PQi120', g: 120, rct: 17, est: true }
+  ],
+  /* tipo: S = onda simples (capa, miolo, interna)  D = dupla (CE, mioloC, intermediária, mioloB, CI)
+     colMin em kgf/cm; gramB/gramC = gramatura nominal de venda (tabela de especificação) */
+  produtos: [
+    { cod: 'P25',  tipo: 'S', ondas: ['B', 'C'], colMin: 2.5, gramB: 315, gramC: 324, rec: ['TLQ95', 'TLQ95', 'TLQ95'] },
+    { cod: 'P30',  tipo: 'S', ondas: ['B', 'C'], colMin: 3.0, gramB: 330, gramC: 340, rec: ['TLQ95', 'TLQ95', 'TLQ95'] },
+    { cod: 'P35',  tipo: 'S', ondas: ['B', 'C'], colMin: 3.5, gramB: 345, gramC: 354, rec: ['TLQ110', 'TLQ95', 'TLQ95'] },
+    { cod: 'P40',  tipo: 'S', ondas: ['B', 'C'], colMin: 4.0, gramB: 355, gramC: 365, rec: ['TLQ110', 'TLQ95', 'TLQ110'] },
+    { cod: 'P45',  tipo: 'S', ondas: ['B', 'C'], colMin: 4.5, gramB: 365, gramC: 375, rec: ['TLQ125', 'TLQ95', 'TLQ95'] },
+    { cod: 'P50',  tipo: 'S', ondas: ['B', 'C'], colMin: 5.0, gramB: 388, gramC: 399, rec: ['TLQ120', 'TLQ110', 'TLQ110'] },
+    { cod: 'P55',  tipo: 'S', ondas: ['B', 'C'], colMin: 5.5, gramB: 398, gramC: 409, rec: ['TLQ120', 'TLQ110', 'TLQ110'] },
+    { cod: 'P60',  tipo: 'S', ondas: ['B', 'C'], colMin: 6.0, gramB: 428, gramC: 440, rec: ['TLQ125', 'TLQ125', 'TLQ125'] },
+    { cod: 'P70',  tipo: 'S', ondas: ['B', 'C'], colMin: 7.0, gramB: 458, gramC: 470, rec: ['TLQ140', 'TLQ125', 'TLQ140'] },
+    { cod: 'P80',  tipo: 'S', ondas: ['B', 'C'], colMin: 8.0, gramB: 514, gramC: 528, rec: ['TLQ165', 'TLQ145', 'TLQ145'] },
+    { cod: 'P85',  tipo: 'S', ondas: ['B', 'C'], colMin: 8.5, gramB: 560, gramC: 576, rec: ['TLQ165', 'TLQ165', 'TLQ165'] },
+    { cod: 'PW40', tipo: 'S', ondas: ['B'],      colMin: 4.0, gramB: 365, gramC: 375, rec: ['WTL120', 'TLQ95', 'TLQ100'] },
+    { cod: 'PW50', tipo: 'S', ondas: ['B'],      colMin: 5.0, gramB: 388, gramC: 399, rec: ['WTL120', 'TLQ110', 'TLQ110'] },
+    { cod: 'PK40', tipo: 'S', ondas: ['B'],      colMin: 4.0, gramB: 345, gramC: 355, rec: ['KSZ100', 'TLQ110', 'TLQ110'] },
+    { cod: 'PK45', tipo: 'S', ondas: ['B'],      colMin: 4.5, gramB: 378, gramC: 389, rec: ['KSZ110', 'TLQ110', 'TLQ110'] },
+    { cod: 'PK50', tipo: 'S', ondas: ['B'],      colMin: 5.0, gramB: 408, gramC: 419, rec: ['KSZ110', 'TLQ110', 'TLQ125'] },
+    { cod: 'PK70', tipo: 'S', ondas: ['B'],      colMin: 7.0, gramB: 448, gramC: 460, rec: ['KSZ125', 'TLQ145', 'TLQ125'] },
+    { cod: 'PK80', tipo: 'S', ondas: ['B'],      colMin: 8.0, gramB: 504, gramC: 518, rec: ['KSZ145', 'TLQ145', 'TLQ145'] },
+    { cod: 'P50D', tipo: 'D', ondas: ['D'], colMin: 5.0, gramB: 538, gramC: 538, rec: ['TLQ95', 'TLQ95', 'TLQ95', 'TLQ95', 'TLQ95'] },
+    { cod: 'P55D', tipo: 'D', ondas: ['D'], colMin: 5.5, gramB: 568, gramC: 568, rec: ['TLQ100', 'TLQ100', 'TLQ100', 'TLQ100', 'TLQ100'] },
+    { cod: 'P70D', tipo: 'D', ondas: ['D'], colMin: 7.0, gramB: 632, gramC: 632, rec: ['TLQ110', 'TLQ110', 'TLQ95', 'TLQ95', 'TLQ110'] },
+    { cod: 'P80D', tipo: 'D', ondas: ['D'], colMin: 8.0, gramB: 662, gramC: 662, rec: ['TLQ125', 'TLQ110', 'TLQ95', 'TLQ95', 'TLQ125'] }
+  ],
+  ofs: []
+};
+
+const CAMADAS_S = ['Capa forradeira', 'Miolo', 'Capa interna'];
+const CAMADAS_D = ['Capa externa', 'Miolo C', 'Capa intermediária', 'Miolo B', 'Capa interna'];
+const MIOLOS_S = [1];           // índices que são miolo (× fator)
+const MIOLOS_D = [1, 3];
+
+let db;
+
+/* ---------- persistência ---------- */
+function carrega() {
+  try { db = JSON.parse(localStorage.getItem(KEY)); } catch (e) { db = null; }
+  if (!db || !db.params) db = JSON.parse(JSON.stringify(SEED));
+  if (!db.v || db.v < 2) {  // migração: formatos de 50 em 50 + limites da máquina
+    db.params.formatos = SEED.params.formatos.slice();
+    db.params.limites = JSON.parse(JSON.stringify(SEED.params.limites));
+    db.v = 2;
+  }
+  salva();
+}
+function salva() { localStorage.setItem(KEY, JSON.stringify(db)); }
+
+/* ---------- utilitários ---------- */
+const $ = id => document.getElementById(id);
+const fmt = (n, d = 1) => (n == null || isNaN(n)) ? '—' : n.toLocaleString('pt-BR', { minimumFractionDigits: d, maximumFractionDigits: d });
+const fmt0 = n => fmt(n, 0);
+function papel(cod) { return db.papeis.find(p => p.cod === cod); }
+function produto(cod) { return db.produtos.find(p => p.cod === cod); }
+function poCodigo(of) { return of.produto + (of.onda === 'D' ? '' : of.onda); }
+function dataBR(iso) {
+  if (!iso) return '—';
+  const [a, m, d] = iso.split('-');
+  return d + '/' + m + '/' + a;
+}
+
+/* ---------- cálculos por OF ---------- */
+function calcOF(of) {
+  const p = produto(of.produto);
+  const larg = of.larg / 1000, compr = of.compr / 1000;
+  const arr = of.arranjo || 1, bob = of.bobina || 0;
+  const c = {};
+  c.m2 = compr * larg * of.qtde;
+  c.ml = of.qtde * compr / arr;
+  c.min = c.ml / arr / db.params.velocidade;
+  c.lu = larg * arr;                       // m
+  c.ponta = bob - c.lu * 1000;             // mm
+  c.refile = bob ? c.ponta / bob : null;
+
+  const fator = db.params.fatorMiolo;
+  const miolos = p.tipo === 'D' ? MIOLOS_D : MIOLOS_S;
+  const cola = p.tipo === 'D' ? db.params.colaDupla : db.params.colaSimples;
+  let gram = cola, col = 0, falta = false;
+  (of.papeis || []).forEach((cod, i) => {
+    const pp = papel(cod);
+    if (!pp) { falta = true; return; }
+    const f = miolos.includes(i) ? fator : 1;
+    gram += pp.g * f;
+    col += pp.rct * f;
+  });
+  c.gram = falta ? null : gram;                 // g/m²
+  c.coluna = falta ? null : col / 10;           // kgf/cm
+  c.colMin = p.colMin;
+  c.colunaOK = c.coluna == null ? null : c.coluna >= p.colMin - 1e-9;
+  c.kg = c.gram == null ? null : c.m2 * c.gram / 1000;
+  const nominal = p.tipo === 'D' ? p.gramB : (of.onda === 'C' ? p.gramC : p.gramB);
+  c.gramNominal = nominal;
+  c.perdaGram = (c.gram != null && nominal) ? (c.gram - nominal) / nominal : null;
+  return c;
+}
+
+function validaVinco(vinco, largMM) {
+  const t = (vinco || '').trim().toLowerCase();
+  if (!t || t === 'x' || t === 's/v') return { ok: true, soma: null };
+  const partes = t.split(/[x×\s]+/).map(Number).filter(n => !isNaN(n) && n > 0);
+  if (!partes.length) return { ok: true, soma: null };
+  const soma = partes.reduce((a, b) => a + b, 0);
+  return { ok: Math.abs(soma - largMM) <= 2, soma, minDist: Math.min(...partes) };
+}
+
+/* arranjos por formato: quantas chapas saem em cada bobina (ponta mínima de 20 mm) */
+function arranjosPorFormato(largMM) {
+  if (!largMM) return [];
+  return db.params.formatos
+    .map(f => {
+      const a = Math.floor((f - 20) / largMM);
+      return a >= 1 ? { bobina: f, arranjo: a, ponta: f - a * largMM, refile: (f - a * largMM) / f } : null;
+    })
+    .filter(Boolean);
+}
+function melhor(largMM) {
+  const t = arranjosPorFormato(largMM);
+  return t.length ? t.reduce((m, x) => x.refile < m.refile ? x : m) : null;
+}
+
+/* ---------- abas ---------- */
+function trocaAba(qual) {
+  ['prog', 'nova', 'tab'].forEach(t => {
+    $('pane' + t[0].toUpperCase() + t.slice(1).replace('prog', 'rog')).classList.toggle('on', t === qual);
+    $('tab' + t[0].toUpperCase() + t.slice(1)).classList.toggle('on', t === qual);
+  });
+  if (qual === 'prog') desenhaProg();
+  if (qual === 'tab') desenhaTabelas();
+}
+
+/* ---------- formulário Nova OF ---------- */
+function montaProdutos() {
+  const sel = $('fProduto');
+  sel.innerHTML = '';
+  db.produtos.forEach(p => p.ondas.forEach(o => {
+    const op = document.createElement('option');
+    op.value = p.cod + '|' + o;
+    op.textContent = p.cod + (o === 'D' ? ' (dupla)' : o);
+    sel.appendChild(op);
+  }));
+}
+
+function aoMudarProduto() {
+  const [cod] = $('fProduto').value.split('|');
+  const p = produto(cod);
+  const nomes = p.tipo === 'D' ? CAMADAS_D : CAMADAS_S;
+  const cont = $('camposPapeis');
+  cont.innerHTML = '';
+  nomes.forEach((nome, i) => {
+    const lb = document.createElement('label'); lb.textContent = nome;
+    const sel = document.createElement('select');
+    sel.id = 'fPapel' + i;
+    sel.onchange = recalcula;
+    db.papeis.forEach(pp => {
+      const op = document.createElement('option');
+      op.value = pp.cod;
+      op.textContent = pp.cod + ' (' + pp.g + ' g · RCT ' + pp.rct + (pp.est ? ' est.' : '') + ')';
+      sel.appendChild(op);
+    });
+    sel.value = (p.rec && p.rec[i] && papel(p.rec[i])) ? p.rec[i] : db.papeis[0].cod;
+    cont.appendChild(lb); cont.appendChild(sel);
+  });
+  recalcula();
+}
+
+function ofDoForm() {
+  const [cod, onda] = $('fProduto').value.split('|');
+  const p = produto(cod);
+  const n = p.tipo === 'D' ? 5 : 3;
+  const papeis = [];
+  for (let i = 0; i < n; i++) papeis.push($('fPapel' + i) ? $('fPapel' + i).value : null);
+  return {
+    id: $('fEditId').value || null,
+    data: $('fData').value, cliente: $('fCliente').value.trim(),
+    of: $('fOF').value, produto: cod, onda,
+    qtde: +$('fQtde').value || 0, larg: +$('fLarg').value || 0, compr: +$('fCompr').value || 0,
+    vinco: $('fVinco').value.trim() || 'x',
+    arranjo: +$('fArranjo').value || 1, bobina: +$('fBobina').value || 0,
+    papeis, palQtde: $('fPalQtde').value, palMed: $('fPalMed').value.trim(),
+    cancelada: false
+  };
+}
+
+function escolheBobina(a, b) { $('fArranjo').value = a; $('fBobina').value = b; recalcula(); }
+
+function recalcula() {
+  const of = ofDoForm();
+  // tabela: arranjos por formato de bobina
+  const tab = arranjosPorFormato(of.larg);
+  const top = melhor(of.larg);
+  const box = $('opcoesBobina');
+  if (tab.length) {
+    let h = '<table class="tbArr"><thead><tr><th>Bobina</th><th>Arranjos</th><th>Ponta</th><th>Refile</th></tr></thead><tbody>';
+    tab.forEach(s => {
+      const sel = s.bobina === of.bobina && s.arranjo === of.arranjo;
+      const best = top && s.bobina === top.bobina;
+      h += '<tr class="' + (sel ? 'sel ' : '') + (best ? 'best' : '') +
+        '" onclick="escolheBobina(' + s.arranjo + ',' + s.bobina + ')">' +
+        '<td><b>' + s.bobina + '</b></td><td>' + s.arranjo + ' × ' + of.larg + '</td>' +
+        '<td>' + fmt0(s.ponta) + ' mm</td><td>' + fmt(s.refile * 100, 1) + '%</td></tr>';
+    });
+    box.innerHTML = h + '</tbody></table>';
+  } else box.innerHTML = '';
+  if (top && (!of.bobina || !of.arranjo)) {
+    $('fArranjo').value = top.arranjo; $('fBobina').value = top.bobina;
+    return recalcula();
+  }
+
+  // limites da máquina (Onduladeira Prime 160)
+  const L = db.params.limites || {};
+  const fora = [];
+  if (of.larg && L.largMin && of.larg < L.largMin) fora.push('largura abaixo do mínimo da máquina (' + L.largMin + ' mm)');
+  if (of.larg && L.largMax && of.larg > L.largMax) fora.push('largura acima do máximo da máquina (' + L.largMax + ' mm)');
+  if (of.compr && L.comprMin && of.compr < L.comprMin) fora.push('comprimento abaixo do mínimo (' + L.comprMin + ' mm)');
+  if (of.compr && L.comprMax && of.compr > L.comprMax) fora.push('comprimento acima do máximo (' + L.comprMax + ' mm)');
+  $('avisoLimites').innerHTML = fora.length
+    ? '<div class="aviso ruim">⚠️ Fora dos limites técnicos: ' + fora.join('; ') + '.</div>' : '';
+
+  const c = calcOF(of);
+
+  // régua da bobina
+  const rg = $('regua');
+  if (of.bobina && of.larg) {
+    let chapas = '';
+    for (let i = 0; i < of.arranjo; i++) {
+      const w = (of.larg / of.bobina) * 100, x = i * w;
+      chapas += '<div class="chapa" style="left:' + x + '%;width:' + w + '%"><span>' + of.larg + '</span></div>';
+    }
+    rg.innerHTML = '<div class="barra">' + chapas + '</div>' +
+      '<div class="legenda"><span>Bobina <b>' + of.bobina + ' mm</b></span>' +
+      '<span>Útil <b>' + fmt0(c.lu * 1000) + '</b> · Ponta <b>' + fmt0(c.ponta) + ' mm</b> · Refile <b>' +
+      (c.refile == null ? '—' : fmt(c.refile * 100, 1) + '%') + '</b></span></div>';
+  } else rg.innerHTML = '';
+
+  // vinco
+  const v = validaVinco(of.vinco, of.larg);
+  let avV = '';
+  if (!v.ok && v.soma != null)
+    avV = '<div class="aviso ruim">A soma dos vincos (' + v.soma + ' mm) não fecha com a largura (' + of.larg + ' mm). Confira as posições.</div>';
+  else if (v.soma != null && v.minDist != null && L.vincoMin && v.minDist < L.vincoMin)
+    avV = '<div class="aviso ruim">Distância entre vincos de ' + v.minDist + ' mm — mínimo da máquina é ' + L.vincoMin + ' mm.</div>';
+  $('avisoVinco').innerHTML = avV;
+
+  // coluna
+  const av = $('avisoColuna');
+  if (c.coluna == null) av.innerHTML = '';
+  else if (c.colunaOK) av.innerHTML = '<div class="aviso bom">Coluna teórica ' + fmt(c.coluna, 2) +
+    ' kgf/cm — atende o mínimo de ' + fmt(c.colMin, 1) + ' do ' + poCodigo(of) + '.</div>';
+  else av.innerHTML = '<div class="aviso ruim">⚠️ Atenção: composição abaixo da coluna mínima. Coluna estimada: ' +
+    fmt(c.coluna, 2) + ' kgf/cm. Mínimo exigido para ' + poCodigo(of) + ': ' + fmt(c.colMin, 1) + ' kgf/cm.</div>';
+
+  // resumo
+  $('resumoCalc').innerHTML =
+    metro('m²', fmt(c.m2, 1)) + metro('Metros lineares', fmt(c.ml, 1)) +
+    metro('Minutos prod.', fmt(c.min, 1)) + metro('Peso (kg)', c.kg == null ? '—' : fmt(c.kg, 1)) +
+    metro('Gramatura g/m²', c.gram == null ? '—' : fmt0(c.gram) + ' / ' + fmt0(c.gramNominal) + ' nom.') +
+    metro('Coluna kgf/cm', c.coluna == null ? '—' : fmt(c.coluna, 2));
+  function metro(t, v) { return '<div class="m"><b>' + v + '</b><span>' + t + '</span></div>'; }
+}
+
+function salvaOF(ev) {
+  ev.preventDefault();
+  const of = ofDoForm();
+  if (!of.bobina) { alert('Informe o formato da bobina.'); return false; }
+  const v = validaVinco(of.vinco, of.larg);
+  if (!v.ok && v.soma != null && !confirm('A soma dos vincos não fecha com a largura. Registrar mesmo assim?')) return false;
+  if (of.id) {
+    const i = db.ofs.findIndex(x => x.id === of.id);
+    of.cancelada = db.ofs[i].cancelada;
+    db.ofs[i] = of;
+  } else {
+    of.id = Date.now() + '-' + Math.random().toString(36).slice(2, 7);
+    db.ofs.push(of);
+  }
+  salva(); limpaForm(); trocaAba('prog');
+  return false;
+}
+
+function limpaForm() {
+  $('formOF').reset();
+  $('fEditId').value = '';
+  $('fVinco').value = 'x';
+  $('btnSalvar').textContent = 'Registrar OF';
+  const hoje = new Date(); 
+  $('fData').value = hoje.toISOString().slice(0, 10);
+  // próxima OF = maior registrada + 1
+  const max = db.ofs.reduce((m, o) => Math.max(m, +o.of || 0), 0);
+  if (max) $('fOF').value = max + 1;
+  aoMudarProduto();
+}
+
+function editaOF(id) {
+  const o = db.ofs.find(x => x.id === id);
+  if (!o) return;
+  trocaAba('nova');
+  $('fEditId').value = o.id; $('fData').value = o.data; $('fCliente').value = o.cliente;
+  $('fOF').value = o.of; $('fProduto').value = o.produto + '|' + o.onda;
+  $('fQtde').value = o.qtde; $('fLarg').value = o.larg; $('fCompr').value = o.compr;
+  $('fVinco').value = o.vinco;
+  aoMudarProduto();
+  (o.papeis || []).forEach((c, i) => { if ($('fPapel' + i) && papel(c)) $('fPapel' + i).value = c; });
+  $('fArranjo').value = o.arranjo; $('fBobina').value = o.bobina;
+  $('fPalQtde').value = o.palQtde || ''; $('fPalMed').value = o.palMed || '';
+  $('btnSalvar').textContent = 'Salvar alterações';
+  recalcula();
+}
+
+function cancelaOF(id) {
+  const o = db.ofs.find(x => x.id === id);
+  o.cancelada = !o.cancelada;
+  salva(); desenhaProg();
+}
+function excluiOF(id) {
+  if (!confirm('Excluir a OF definitivamente?')) return;
+  db.ofs = db.ofs.filter(x => x.id !== id);
+  salva(); desenhaProg();
+}
+
+/* ---------- programação ---------- */
+const ordemOnda = { B: 0, C: 1, D: 2 };
+function desenhaProg() {
+  const cont = $('listaProg');
+  $('velChip').textContent = db.params.velocidade + ' m/min';
+  if (!db.ofs.length) {
+    cont.innerHTML = '<div class="vazio">Nenhuma OF registrada.<br>Toque em <b>Nova OF</b> para começar.</div>';
+    return;
+  }
+  const dias = {};
+  db.ofs.forEach(o => { (dias[o.data] = dias[o.data] || []).push(o); });
+  let html = '';
+  let totKg = 0, totMin = 0, refs = [];
+  Object.keys(dias).sort().forEach(dia => {
+    const ofs = dias[dia].slice().sort((a, b) =>
+      (ordemOnda[a.onda] - ordemOnda[b.onda]) || (a.bobina - b.bobina) || (+a.of - +b.of));
+    let dKg = 0, dMin = 0;
+    let cards = '';
+    ofs.forEach(o => {
+      const c = calcOF(o);
+      if (!o.cancelada && c.kg != null) { dKg += c.kg; dMin += c.min; refs.push(c.refile); }
+      const tagCol = c.coluna == null ? '' :
+        '<span class="tag ' + (c.colunaOK ? 'col-ok' : 'col-ruim') + '">coluna ' + fmt(c.coluna, 2) +
+        (c.colunaOK ? '' : ' &lt; ' + fmt(c.colMin, 1)) + '</span>';
+      cards += '<div class="of' + (o.cancelada ? ' cancelada' : '') + '">' +
+        '<div class="l1"><b>' + o.cliente + ' · ' + poCodigo(o) + '</b><span class="num">OF ' + o.of + '</span></div>' +
+        '<div class="l2">' + fmt0(o.qtde) + ' chapas · ' + o.larg + ' × ' + o.compr + ' mm · vinco ' + o.vinco +
+        ' · papéis ' + (o.papeis || []).join(' / ') + '</div>' +
+        '<div class="l3">' +
+        (o.cancelada ? '<span class="tag cancel">Cancelada</span>' : '') +
+        '<span class="tag">' + o.arranjo + '× em ' + o.bobina + '</span>' +
+        '<span class="tag">refile ' + (c.refile == null ? '—' : fmt(c.refile * 100, 1) + '%') + '</span>' +
+        '<span class="tag">' + (c.kg == null ? '—' : fmt(c.kg, 0) + ' kg') + '</span>' +
+        '<span class="tag">' + fmt(c.min, 0) + ' min</span>' + tagCol +
+        '</div>' +
+        '<div class="ops"><button onclick="editaOF(\'' + o.id + '\')">Editar</button>' +
+        '<button onclick="cancelaOF(\'' + o.id + '\')">' + (o.cancelada ? 'Reativar' : 'Cancelar') + '</button>' +
+        '<button class="del" onclick="excluiOF(\'' + o.id + '\')">Excluir</button></div></div>';
+    });
+    totKg += dKg; totMin += dMin;
+    html += '<div class="dia"><h2>' + dataBR(dia) + '<small>' + fmt(dKg, 0) + ' kg · ' +
+      fmt(dMin / 60, 1) + ' h</small></h2>' + cards + '</div>';
+  });
+  const refMed = refs.length ? refs.reduce((a, b) => a + b, 0) / refs.length : null;
+  html += '<div class="totais">' +
+    '<div><b>' + fmt(totKg, 0) + '</b><span>kg no período</span></div>' +
+    '<div><b>' + fmt(totMin / 60, 1) + ' h</b><span>tempo de máquina</span></div>' +
+    '<div><b>' + (refMed == null ? '—' : fmt(refMed * 100, 1) + '%') + '</b><span>refile médio</span></div>' +
+    '<div><b>' + db.ofs.filter(o => !o.cancelada).length + '</b><span>OFs ativas</span></div></div>';
+  cont.innerHTML = html;
+
+  // datalist de clientes
+  const dl = $('dlClientes');
+  dl.innerHTML = [...new Set(db.ofs.map(o => o.cliente))].map(c => '<option value="' + c + '">').join('');
+}
+
+/* ---------- exportação Excel (formato jun26) ---------- */
+function exportaXLSX() {
+  if (!db.ofs.length) { alert('Não há OFs para exportar.'); return; }
+  const head = ['Seq.Prod', 'Cliente', 'P.O.', 'Data Prod', 'Qtde. Prod.', 'OF', 'Qtde Pedido',
+    'largura', 'comprimento (facão)', 'Sliter Vincadeira', 'm²', 'ML', 't/prod', 'Min prod', 'kg',
+    'Arranjo', 'Formato bobinas', 'Lagura util', 'Ponta Refile', 'Refile',
+    'Capa  Forradeira', 'MB', 'CIB', 'MC', 'CIC', 'Palete Qtde', 'Palete (medida LxC)'];
+  const linhas = [['Programação Onduladeira — Prime'], head];
+  const ord = db.ofs.slice().sort((a, b) => a.data.localeCompare(b.data) ||
+    (ordemOnda[a.onda] - ordemOnda[b.onda]) || (a.bobina - b.bobina) || (+a.of - +b.of));
+  ord.forEach(o => {
+    const c = calcOF(o), p = produto(o.produto);
+    const pap = o.papeis || [];
+    // mapeia camadas no layout jun26: Capa | MB | CIB | MC | CIC
+    let capa, MB, CIB, MC, CIC;
+    if (p.tipo === 'D') [capa, MC, CIB, MB, CIC] = [pap[0], pap[1], pap[2], pap[3], pap[4]];
+    else if (o.onda === 'C') { capa = pap[0]; MC = pap[1]; CIC = pap[2]; }
+    else { capa = pap[0]; MB = pap[1]; CIB = pap[2]; }
+    const canc = o.cancelada;
+    linhas.push([dataBR(o.data), o.cliente, poCodigo(o), '', '', +o.of, o.qtde,
+      o.larg / 1000, o.compr / 1000, o.vinco,
+      +c.m2.toFixed(3), +c.ml.toFixed(2), +(c.ml / db.params.velocidade / 60).toFixed(4),
+      canc ? '' : +c.min.toFixed(2), canc || c.kg == null ? '' : +c.kg.toFixed(2),
+      o.arranjo, o.bobina, +(c.lu).toFixed(3), +c.ponta.toFixed(0),
+      c.refile == null ? '' : +c.refile.toFixed(4),
+      capa || '', MB || '', CIB || '', MC || '', canc ? 'Cancelado' : (CIC || ''),
+      o.palQtde || '', o.palMed || '']);
+  });
+  // totais
+  const ativos = ord.filter(o => !o.cancelada).map(o => calcOF(o));
+  const somaKg = ativos.reduce((a, c) => a + (c.kg || 0), 0);
+  const mediaRef = ativos.length ? ativos.reduce((a, c) => a + (c.refile || 0), 0) / ativos.length : 0;
+  const tot = new Array(head.length).fill('');
+  tot[13] = 'TOTAIS'; tot[14] = +somaKg.toFixed(1); tot[19] = +mediaRef.toFixed(4);
+  linhas.push([], tot);
+
+  const ws = XLSX.utils.aoa_to_sheet(linhas);
+  ws['!cols'] = head.map((h, i) => ({ wch: i === 1 ? 18 : Math.max(9, h.length) }));
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'programacao');
+  const nome = 'Programacao_Prime_' + new Date().toISOString().slice(0, 10) + '.xlsx';
+  const dados = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+  const blob = new Blob([dados], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+  const file = new File([blob], nome, { type: blob.type });
+  if (navigator.canShare && navigator.canShare({ files: [file] })) {
+    navigator.share({ files: [file], title: nome }).catch(() => baixa(blob, nome));
+  } else baixa(blob, nome);
+}
+function baixa(blob, nome) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = nome; a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+}
+
+/* ---------- tabelas e parâmetros ---------- */
+function desenhaTabelas() {
+  $('pVel').value = db.params.velocidade;
+  $('pFator').value = db.params.fatorMiolo;
+  $('pColaS').value = db.params.colaSimples;
+  $('pColaD').value = db.params.colaDupla;
+  $('pFormatos').value = db.params.formatos.join(', ');
+  const L = db.params.limites || {};
+  $('pLargMin').value = L.largMin || ''; $('pLargMax').value = L.largMax || '';
+  $('pComprMin').value = L.comprMin || ''; $('pComprMax').value = L.comprMax || '';
+  $('pVincoMin').value = L.vincoMin || '';
+
+  const tb = $('tbPapeis').querySelector('tbody');
+  tb.innerHTML = '';
+  db.papeis.forEach((p, i) => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = '<td><b>' + p.cod + '</b>' + (p.est ? ' <span class="est">est.</span>' : '') + '</td>' +
+      '<td><input type="number" value="' + p.g + '" onchange="mudaPapel(' + i + ',\'g\',this.value)"></td>' +
+      '<td><input type="number" step="0.5" value="' + p.rct + '" onchange="mudaPapel(' + i + ',\'rct\',this.value)"></td>' +
+      '<td><button class="btn mini perigo" onclick="delPapel(' + i + ')">×</button></td>';
+    tb.appendChild(tr);
+  });
+
+  const lp = $('listaProdutos');
+  lp.innerHTML = '';
+  db.produtos.forEach((p, pi) => {
+    const nomes = p.tipo === 'D' ? CAMADAS_D : CAMADAS_S;
+    let sels = '';
+    nomes.forEach((n, i) => {
+      sels += '<label>' + n + '</label><select onchange="mudaReceita(' + pi + ',' + i + ',this.value)">' +
+        db.papeis.map(pp => '<option value="' + pp.cod + '"' + (p.rec[i] === pp.cod ? ' selected' : '') + '>' +
+          pp.cod + ' (' + pp.g + 'g · ' + pp.rct + ')</option>').join('') + '</select>';
+    });
+    const div = document.createElement('div');
+    div.className = 'card';
+    div.innerHTML = '<h3 style="font-size:17px">' + p.cod + (p.tipo === 'D' ? ' — parede dupla' : '') + '</h3>' +
+      '<div class="row"><div><label>Coluna mín. (kgf/cm)</label>' +
+      '<input type="number" step="0.1" value="' + p.colMin + '" onchange="mudaProduto(' + pi + ',\'colMin\',this.value)"></div>' +
+      '<div><label>Gram. nominal B</label><input type="number" value="' + p.gramB + '" onchange="mudaProduto(' + pi + ',\'gramB\',this.value)"></div>' +
+      '<div><label>Gram. nominal C</label><input type="number" value="' + p.gramC + '" onchange="mudaProduto(' + pi + ',\'gramC\',this.value)"></div></div>' +
+      sels + '<div class="nota" id="prev' + pi + '"></div>';
+    lp.appendChild(div);
+    previewProduto(pi);
+  });
+}
+function previewProduto(pi) {
+  const p = db.produtos[pi];
+  const miolos = p.tipo === 'D' ? MIOLOS_D : MIOLOS_S;
+  const cola = p.tipo === 'D' ? db.params.colaDupla : db.params.colaSimples;
+  let g = cola, col = 0;
+  p.rec.forEach((c, i) => {
+    const pp = papel(c); if (!pp) return;
+    const f = miolos.includes(i) ? db.params.fatorMiolo : 1;
+    g += pp.g * f; col += pp.rct * f;
+  });
+  const el = $('prev' + pi);
+  if (el) el.innerHTML = 'Receita atual: coluna teórica <b>' + fmt(col / 10, 2) + '</b> kgf/cm (mín. ' +
+    fmt(p.colMin, 1) + ') · gramatura <b>' + fmt0(g) + '</b> g/m²' +
+    (col / 10 < p.colMin ? ' — <span class="est">abaixo do mínimo</span>' : '');
+}
+function mudaPapel(i, campo, v) { db.papeis[i][campo] = +v; if (campo === 'rct') delete db.papeis[i].est; salva(); desenhaTabelas(); }
+function delPapel(i) {
+  const cod = db.papeis[i].cod;
+  if (db.produtos.some(p => p.rec.includes(cod))) { alert('Este papel está em uso numa receita.'); return; }
+  if (confirm('Remover ' + cod + '?')) { db.papeis.splice(i, 1); salva(); desenhaTabelas(); }
+}
+function addPapel() {
+  const cod = prompt('Código do papel (ex.: TLQ150):');
+  if (!cod) return;
+  const g = +prompt('Gramatura (g/m²):') || 0;
+  const rct = +prompt('RCT (kgf):') || 0;
+  db.papeis.push({ cod: cod.trim(), g, rct });
+  salva(); desenhaTabelas();
+}
+function mudaReceita(pi, i, v) { db.produtos[pi].rec[i] = v; salva(); previewProduto(pi); }
+function mudaProduto(pi, campo, v) { db.produtos[pi][campo] = +v; salva(); previewProduto(pi); }
+function salvaParams() {
+  db.params.velocidade = +$('pVel').value || 60;
+  db.params.fatorMiolo = +$('pFator').value || 1.3;
+  db.params.colaSimples = +$('pColaS').value || 15;
+  db.params.colaDupla = +$('pColaD').value || 20;
+  db.params.formatos = $('pFormatos').value.split(/[,;\s]+/).map(Number).filter(n => n > 0).sort((a, b) => a - b);
+  db.params.limites = {
+    largMin: +$('pLargMin').value || 0, largMax: +$('pLargMax').value || 0,
+    comprMin: +$('pComprMin').value || 0, comprMax: +$('pComprMax').value || 0,
+    vincoMin: +$('pVincoMin').value || 0
+  };
+  salva();
+  $('velChip').textContent = db.params.velocidade + ' m/min';
+  alert('Parâmetros salvos. Os cálculos de todas as OFs já usam os novos valores.');
+}
+
+/* ---------- backup ---------- */
+function exportaJSON() {
+  baixa(new Blob([JSON.stringify(db, null, 1)], { type: 'application/json' }),
+    'backup_onduladeira_' + new Date().toISOString().slice(0, 10) + '.json');
+}
+function importaJSON(inp) {
+  const f = inp.files[0]; if (!f) return;
+  const r = new FileReader();
+  r.onload = () => {
+    try {
+      const d = JSON.parse(r.result);
+      if (!d.params || !d.papeis) throw 0;
+      db = d; salva(); desenhaProg(); desenhaTabelas(); alert('Backup restaurado.');
+    } catch (e) { alert('Arquivo inválido.'); }
+  };
+  r.readAsText(f);
+  inp.value = '';
+}
+function zeraTudo() {
+  if (confirm('Apagar TODAS as OFs e restaurar as tabelas padrão?') && confirm('Tem certeza? Não dá para desfazer.')) {
+    db = JSON.parse(JSON.stringify(SEED)); salva(); desenhaProg(); desenhaTabelas();
+  }
+}
+
+/* ---------- início ---------- */
+carrega();
+montaProdutos();
+limpaForm();
+desenhaProg();
+trocaAba('prog');
+if ('serviceWorker' in navigator && location.protocol.startsWith('http'))
+  navigator.serviceWorker.register('sw.js').catch(() => {});
+
+</script>
+</body>
+</html>
