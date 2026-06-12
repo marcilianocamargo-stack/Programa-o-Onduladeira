@@ -8,7 +8,9 @@
 <link rel="manifest" href="data:application/manifest+json;base64,eyJuYW1lIjogIlByb2dyYW1hXHUwMGU3XHUwMGUzbyBPbmR1bGFkZWlyYSBQcmltZSIsICJzaG9ydF9uYW1lIjogIk9uZHVsYWRlaXJhIiwgInN0YXJ0X3VybCI6ICIuIiwgImRpc3BsYXkiOiAic3RhbmRhbG9uZSIsICJiYWNrZ3JvdW5kX2NvbG9yIjogIiMwZjFlMmUiLCAidGhlbWVfY29sb3IiOiAiIzFhM2E1YyIsICJpY29ucyI6IFt7InNyYyI6ICJkYXRhOmltYWdlL3N2Zyt4bWw7YmFzZTY0LFBITjJaeUI0Yld4dWN6MGlhSFIwY0RvdkwzZDNkeTUzTXk1dmNtY3ZNakF3TUM5emRtY2lJSFpwWlhkQ2IzZzlJakFnTUNBeE1EQWdNVEF3SWo0S1BISmxZM1FnZDJsa2RHZzlJakV3TUNJZ2FHVnBaMmgwUFNJeE1EQWlJSEo0UFNJeE9DSWdabWxzYkQwaUl6Qm1NV1V5WlNJdlBnbzhjR0YwYUNCa1BTSk5NVFFnTmpJZ2NUa2dMVEUySURFNElEQWdkREU0SURBZ2RERTRJREFnZERFNElEQWlJSE4wY205clpUMGlJelJoTjJSaU15SWdjM1J5YjJ0bExYZHBaSFJvUFNJM0lpQm1hV3hzUFNKdWIyNWxJaUJ6ZEhKdmEyVXRiR2x1WldOaGNEMGljbTkxYm1RaUx6NEtQSEpsWTNRZ2VEMGlNVFFpSUhrOUlqTTBJaUIzYVdSMGFEMGlOeklpSUdobGFXZG9kRDBpTnlJZ2NuZzlJak11TlNJZ1ptbHNiRDBpSTJabVptWm1aaUl2UGdvOGNtVmpkQ0I0UFNJeE5DSWdlVDBpTnpJaUlIZHBaSFJvUFNJM01pSWdhR1ZwWjJoMFBTSTNJaUJ5ZUQwaU15NDFJaUJtYVd4c1BTSWpabVptWm1abUlpOCtDand2YzNablBnbz0iLCAic2l6ZXMiOiAiYW55IiwgInR5cGUiOiAiaW1hZ2Uvc3ZnK3htbCIsICJwdXJwb3NlIjogImFueSJ9XX0=">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Barlow:wght@400;500;600&display=swap" rel="stylesheet">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
 <style>
 :root{
   --papel:#eef2f7; --cartao:#ffffff; --tinta:#0f1e2e; --tinta2:#51637a;
@@ -156,6 +158,7 @@ details .corpo{padding:10px 0}
     <div id="listaProg"></div>
     <div class="acoes">
       <button class="btn" onclick="exportaXLSX()">Exportar Excel</button>
+      <button class="btn" onclick="pdfOperadores()">PDF Operadores</button>
       <button class="btn sec" onclick="window.print()">Imprimir</button>
     </div>
   </section>
@@ -203,6 +206,8 @@ details .corpo{padding:10px 0}
       </div>
 
       <div class="card">
+        <h3 style="font-size:17px;text-transform:uppercase;letter-spacing:.04em">Paletização</h3>
+        <div id="paleteInfo"></div>
         <div class="row">
           <div><label>Paletes (qtde)</label><input type="number" id="fPalQtde" inputmode="numeric" min="0"></div>
           <div><label>Palete (medida LxC)</label><input id="fPalMed" placeholder="Padrão"></div>
@@ -240,6 +245,17 @@ details .corpo{padding:10px 0}
           <div><label>Compr. mín.</label><input type="number" id="pComprMin"></div>
           <div><label>Compr. máx.</label><input type="number" id="pComprMax"></div>
           <div><label>Vinco mín.</label><input type="number" id="pVincoMin"></div>
+        </div>
+        <div class="row">
+          <div><label>Altura pilha (mm)</label><input type="number" id="pPilhaAlt"></div>
+          <div><label>Múlt. onda B</label><input type="number" id="pMultB"></div>
+          <div><label>Múlt. onda C</label><input type="number" id="pMultC"></div>
+          <div><label>Múlt. dupla</label><input type="number" id="pMultD"></div>
+        </div>
+        <div class="row">
+          <div><label>Sobra máx. (mm)</label><input type="number" id="pSobra"></div>
+          <div><label>Folga amarração (mm)</label><input type="number" id="pFolga"></div>
+          <div><label>Paletes padrão</label><input id="pPadroes"></div>
         </div>
         <div class="acoes"><button class="btn mini" onclick="salvaParams()">Salvar parâmetros</button></div>
       </div>
@@ -297,7 +313,8 @@ const KEY = 'prime_of_v1';
 const SEED = {
   params: { velocidade: 60, fatorMiolo: 1.3, colaSimples: 15, colaDupla: 20,
     formatos: Array.from({ length: 19 }, (_, i) => 700 + i * 50),  // 700 a 1600, de 50 em 50
-    limites: { largMin: 300, largMax: 1370, comprMin: 0, comprMax: 3000, vincoMin: 50 } },
+    limites: { largMin: 300, largMax: 1370, comprMin: 0, comprMax: 3000, vincoMin: 50 },
+    palete: { altura: 1220, multB: 33, multC: 26, multD: 16, sobra: 200, padroes: [1000, 1100] } },
   papeis: [
     { cod: 'TLQ95',  g: 95,  rct: 11 },
     { cod: 'TPQ100', g: 100, rct: 8 },
@@ -369,6 +386,10 @@ function carrega() {
     db.params.formatos = SEED.params.formatos.slice();
     db.params.limites = JSON.parse(JSON.stringify(SEED.params.limites));
     db.v = 2;
+  }
+  if (db.v < 3) {  // migração: cálculo de paletes
+    db.params.palete = JSON.parse(JSON.stringify(SEED.params.palete));
+    db.v = 3;
   }
   salva();
 }
@@ -509,6 +530,49 @@ function ofDoForm() {
   };
 }
 
+/* paletes: pilha de 1,22 m com múltiplo por onda (B 33 / C 26 / dupla 16 chapas por 10 cm),
+   ajustada para múltiplo de 5 entre 10 e 15 chapas abaixo do exato.
+   Padrões 1,00×1,00 e 1,10×1,10 com sobra tolerada de 20 cm; acima disso, sob medida.
+   Chapa estreita: 2 ou 3 pilhas lado a lado (palete mais comprido e menos largo). */
+function calcPalete(of) {
+  const P = db.params.palete;
+  if (!P || !of.larg || !of.compr || !of.qtde) return null;
+  const mult = of.onda === 'D' ? P.multD : (of.onda === 'C' ? P.multC : P.multB);
+  const exato = (P.altura / 100) * mult;
+  let pilha = Math.floor((exato - 10) / 5) * 5;
+  if (pilha < 5) pilha = 5;
+  const pads = (P.padroes || [1000, 1100]).slice().sort((a, b) => a - b);
+  const maxPad = pads[pads.length - 1], tol = P.sobra || 200;
+  let esc = null;
+  for (let n = 3; n >= 1; n--) {
+    const w = n * of.larg;
+    if (w <= maxPad + tol && of.compr <= maxPad + tol) {
+      const pad = pads.find(d => w <= d && of.compr <= d) ||
+                  pads.slice().reverse().find(d => w <= d + tol && of.compr <= d + tol);
+      esc = { n, padrao: true, pad, medida: 'Padrão' };
+      break;
+    }
+  }
+  if (!esc) {
+    /* sob medida: chapa + 2 cm de folga por ponta (amarração não estraga a chapa);
+       largura do palete de preferência ≤ 1100 mm — a carreta tem 2,20 m e leva dois lado a lado */
+    const folga = P.folga || 40;
+    const r10 = v => Math.ceil(v / 10) * 10;
+    let n = 1;
+    if (of.larg + folga <= 1100)
+      for (let k = 3; k >= 1; k--) if (k * of.larg + folga <= 1100) { n = k; break; }
+    esc = { n, padrao: false, pad: null, medida: r10(n * of.larg + folga) + 'x' + r10(of.compr + folga) };
+  }
+  const porPalete = pilha * esc.n;
+  return { ...esc, pilha, porPalete, paletes: Math.ceil(of.qtde / porPalete) };
+}
+function usaPalete() {
+  const s = calcPalete(ofDoForm());
+  if (!s) return;
+  $('fPalQtde').value = s.paletes;
+  $('fPalMed').value = s.medida;
+}
+
 function escolheBobina(a, b) { $('fArranjo').value = a; $('fBobina').value = b; recalcula(); }
 
 function recalcula() {
@@ -576,6 +640,19 @@ function recalcula() {
     ' kgf/cm — atende o mínimo de ' + fmt(c.colMin, 1) + ' do ' + poCodigo(of) + '.</div>';
   else av.innerHTML = '<div class="aviso ruim">⚠️ Atenção: composição abaixo da coluna mínima. Coluna estimada: ' +
     fmt(c.coluna, 2) + ' kgf/cm. Mínimo exigido para ' + poCodigo(of) + ': ' + fmt(c.colMin, 1) + ' kgf/cm.</div>';
+
+  // palete
+  const sp = calcPalete(of);
+  const pi = $('paleteInfo');
+  if (sp) {
+    const ondaTxt = of.onda === 'D' ? 'dupla' : 'onda ' + of.onda;
+    pi.innerHTML = '<div class="aviso bom">Sugestão: pilha de <b>' + sp.pilha + '</b> chapas (1,22 m · ' + ondaTxt +
+      ') · <b>' + sp.n + '</b> pilha' + (sp.n > 1 ? 's' : '') + ' por palete ' +
+      (sp.padrao ? 'padrão ' + (sp.pad / 1000).toLocaleString('pt-BR', { minimumFractionDigits: 2 }) : 'sob medida ' + sp.medida) +
+      ' · <b>' + sp.paletes + '</b> palete' + (sp.paletes > 1 ? 's' : '') +
+      ' &nbsp;<button type="button" class="btn mini" onclick="usaPalete()">Usar</button></div>';
+    if (!$('fPalQtde').value && !$('fPalMed').value) { $('fPalQtde').value = sp.paletes; $('fPalMed').value = sp.medida; }
+  } else pi.innerHTML = '';
 
   // resumo
   $('resumoCalc').innerHTML =
@@ -646,6 +723,10 @@ function excluiOF(id) {
 
 /* ---------- programação ---------- */
 const ordemOnda = { B: 0, C: 1, D: 2 };
+/* dentro do dia: bobina mais larga primeiro; mesmo cliente agrupado; depois nº da OF */
+function cmpProg(a, b) {
+  return (b.bobina - a.bobina) || a.cliente.localeCompare(b.cliente) || (+a.of - +b.of);
+}
 function desenhaProg() {
   const cont = $('listaProg');
   $('velChip').textContent = db.params.velocidade + ' m/min';
@@ -658,8 +739,7 @@ function desenhaProg() {
   let html = '';
   let totKg = 0, totMin = 0, refs = [];
   Object.keys(dias).sort().forEach(dia => {
-    const ofs = dias[dia].slice().sort((a, b) =>
-      (ordemOnda[a.onda] - ordemOnda[b.onda]) || (a.bobina - b.bobina) || (+a.of - +b.of));
+    const ofs = dias[dia].slice().sort(cmpProg);
     let dKg = 0, dMin = 0;
     let cards = '';
     ofs.forEach(o => {
@@ -708,8 +788,8 @@ function exportaXLSX() {
     'Arranjo', 'Formato bobinas', 'Lagura util', 'Ponta Refile', 'Refile',
     'Capa  Forradeira', 'MB', 'CIB', 'MC', 'CIC', 'Palete Qtde', 'Palete (medida LxC)'];
   const linhas = [['Programação Onduladeira — Prime'], head];
-  const ord = db.ofs.slice().sort((a, b) => a.data.localeCompare(b.data) ||
-    (ordemOnda[a.onda] - ordemOnda[b.onda]) || (a.bobina - b.bobina) || (+a.of - +b.of));
+  const linhasCancel = new Set();
+  const ord = db.ofs.slice().sort((a, b) => a.data.localeCompare(b.data) || cmpProg(a, b));
   ord.forEach(o => {
     const c = calcOF(o), p = produto(o.produto);
     const pap = o.papeis || [];
@@ -719,6 +799,7 @@ function exportaXLSX() {
     else if (o.onda === 'C') { capa = pap[0]; MC = pap[1]; CIC = pap[2]; }
     else { capa = pap[0]; MB = pap[1]; CIB = pap[2]; }
     const canc = o.cancelada;
+    if (canc) linhasCancel.add(linhas.length);
     linhas.push([dataBR(o.data), o.cliente, poCodigo(o), '', '', +o.of, o.qtde,
       o.larg / 1000, o.compr / 1000, o.vinco,
       +c.m2.toFixed(3), +c.ml.toFixed(2), +(c.ml / db.params.velocidade / 60).toFixed(4),
@@ -738,6 +819,20 @@ function exportaXLSX() {
 
   const ws = XLSX.utils.aoa_to_sheet(linhas);
   ws['!cols'] = head.map((h, i) => ({ wch: i === 1 ? 18 : Math.max(9, h.length) }));
+  ws['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 9 } }];
+  const borda = { style: 'thin', color: { rgb: 'B8C4D0' } };
+  const bordas = { top: borda, bottom: borda, left: borda, right: borda };
+  const nLin = linhas.length, nCol = head.length;
+  for (let r = 0; r < nLin; r++) for (let c = 0; c < nCol; c++) {
+    const ref = XLSX.utils.encode_cell({ r, c });
+    if (!ws[ref]) continue;
+    if (r === 0) ws[ref].s = { font: { bold: true, sz: 14 } };
+    else if (r === 1) ws[ref].s = { font: { bold: true, color: { rgb: 'FFFFFF' } },
+      fill: { fgColor: { rgb: '0F1E2E' } }, border: bordas, alignment: { wrapText: true, vertical: 'center' } };
+    else if (linhasCancel.has(r)) ws[ref].s = { font: { color: { rgb: 'C00000' }, strike: c === 1 }, border: bordas };
+    else if (r === nLin - 1) ws[ref].s = { font: { bold: true }, border: bordas };
+    else ws[ref].s = { border: bordas };
+  }
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'programacao');
   const nome = 'Programacao_Prime_' + new Date().toISOString().slice(0, 10) + '.xlsx';
@@ -748,6 +843,49 @@ function exportaXLSX() {
     navigator.share({ files: [file], title: nome }).catch(() => baixa(blob, nome));
   } else baixa(blob, nome);
 }
+/* PDF para os operadores: só o essencial, letra grande, uma página por dia */
+function pdfOperadores() {
+  const ativos = db.ofs.filter(o => !o.cancelada);
+  if (!ativos.length) { alert('Não há OFs ativas para gerar o PDF.'); return; }
+  if (!window.jspdf) { alert('Sem internet para carregar o gerador de PDF. Conecte e tente de novo.'); return; }
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+  const dias = {};
+  ativos.forEach(o => { (dias[o.data] = dias[o.data] || []).push(o); });
+  const chavesDia = Object.keys(dias).sort();
+  chavesDia.forEach((dia, di) => {
+    if (di > 0) doc.addPage();
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(17);
+    doc.text('ONDULADEIRA — PROGRAMAÇÃO DE ' + dataBR(dia), 14, 14);
+    const corpo = dias[dia].slice().sort(cmpProg).map((o, i) => {
+      const pal = (o.palQtde ? o.palQtde + ' palete' + (o.palQtde > 1 ? 's' : '') : '—') +
+        (o.palMed ? '\n' + (o.palMed === 'Padrão' ? 'padrão 1,10 / 1,00' : o.palMed + ' mm') : '');
+      return [i + 1, o.cliente, 'OF ' + o.of + '\n' + poCodigo(o),
+        o.bobina + ' mm\n' + (o.papeis || []).join(' / '),
+        o.larg + ' × ' + o.compr + '\nvinco ' + o.vinco,
+        fmt0(o.qtde), o.arranjo + '×', pal];
+    });
+    doc.autoTable({
+      startY: 19,
+      head: [['#', 'Cliente', 'OF / Produto', 'Bobina / Papéis', 'Medida (mm)', 'Chapas', 'Arr.', 'Paletes']],
+      body: corpo,
+      styles: { fontSize: 11.5, cellPadding: 2.6, valign: 'middle', lineColor: [120, 130, 140], lineWidth: 0.2 },
+      headStyles: { fillColor: [15, 30, 46], fontSize: 11, halign: 'left' },
+      columnStyles: { 0: { cellWidth: 9 }, 1: { cellWidth: 52, fontStyle: 'bold' }, 5: { halign: 'right', fontStyle: 'bold' }, 6: { cellWidth: 13 } },
+      didDrawPage: () => {
+        doc.setFontSize(8.5); doc.setFont('helvetica', 'normal');
+        doc.text('Prime Ondulados — gerado em ' + new Date().toLocaleString('pt-BR'), 14, doc.internal.pageSize.getHeight() - 6);
+      }
+    });
+  });
+  const nome = 'Operadores_' + (chavesDia[0] || '') + '.pdf';
+  const blob = doc.output('blob');
+  const file = new File([blob], nome, { type: 'application/pdf' });
+  if (navigator.canShare && navigator.canShare({ files: [file] })) {
+    navigator.share({ files: [file], title: nome }).catch(() => baixa(blob, nome));
+  } else baixa(blob, nome);
+}
+
 function baixa(blob, nome) {
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob); a.download = nome; a.click();
@@ -765,6 +903,11 @@ function desenhaTabelas() {
   $('pLargMin').value = L.largMin || ''; $('pLargMax').value = L.largMax || '';
   $('pComprMin').value = L.comprMin || ''; $('pComprMax').value = L.comprMax || '';
   $('pVincoMin').value = L.vincoMin || '';
+  const PA = db.params.palete || {};
+  $('pPilhaAlt').value = PA.altura || ''; $('pMultB').value = PA.multB || '';
+  $('pMultC').value = PA.multC || ''; $('pMultD').value = PA.multD || '';
+  $('pSobra').value = PA.sobra || ''; $('pFolga').value = PA.folga || 40;
+  $('pPadroes').value = (PA.padroes || []).join(', ');
 
   const tb = $('tbPapeis').querySelector('tbody');
   tb.innerHTML = '';
@@ -840,6 +983,12 @@ function salvaParams() {
     largMin: +$('pLargMin').value || 0, largMax: +$('pLargMax').value || 0,
     comprMin: +$('pComprMin').value || 0, comprMax: +$('pComprMax').value || 0,
     vincoMin: +$('pVincoMin').value || 0
+  };
+  db.params.palete = {
+    altura: +$('pPilhaAlt').value || 1220,
+    multB: +$('pMultB').value || 33, multC: +$('pMultC').value || 26, multD: +$('pMultD').value || 16,
+    sobra: +$('pSobra').value || 200, folga: +$('pFolga').value || 40,
+    padroes: $('pPadroes').value.split(/[,;\s]+/).map(Number).filter(n => n > 0).sort((a, b) => a - b)
   };
   salva();
   $('velChip').textContent = db.params.velocidade + ' m/min';
