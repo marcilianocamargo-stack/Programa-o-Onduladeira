@@ -543,50 +543,50 @@ function ofDoForm() {
    - Padrões rígidos: 1000x1000 e 1010x1010
    - Sobra máxima: 100mm por lado (200mm total)
    - Otimização para carretas (largura combinada na carroceria) */
+/* Novas regras de paletização Prime:
+   - Mantém altura cheia (sem tirar 10 chapas e sem arredondar para múltiplo de 5)
+   - Padrões rígidos: 1000x1000 e 1010x1010 (com tolerância de 200mm total)
+   - Sob medida: usa exatamente 20mm de folga total (10mm de cada lado) sem arredondar para múltiplo de 10
+   - Otimização para carretas (largura combinada na carroceria <= 1200mm por palete) */
 function calcPalete(of) {
   const P = db.params.palete;
   if (!P || !of.larg || !of.compr || !of.qtde) return null;
 
-  // 1. Definição da altura e quantidade por pilha
+  // 1. Quantidade por pilha usando a altura cheia de 1220 mm (sem arredondamentos)
   const mult = of.onda === 'D' ? P.multD : (of.onda === 'C' ? P.multC : P.multB);
-  const exato = (1220 / 100) * mult; // Altura padrão rígida de 1220 mm
-  let pilha = Math.floor((exato - 10) / 5) * 5;
-  if (pilha < 5) pilha = 5;
+  let pilha = Math.floor((1220 / 100) * mult); // Altura cheia baseada no fator da onda
+  if (pilha < 1) pilha = 1;
 
-  // 2. Definição dos Paletes Padrão Aceitos na Fábrica
+  // 2. Definição dos Paletes Padrão e Tolerância Máxima (100mm por lado = 200mm total)
   const padroes = [1000, 1010]; 
-  const tolMax = 200; // Máximo 200mm total de sobra (100mm por lado)
+  const tolMax = 200; 
 
   let esc = null;
 
-  // 3. Teste de arranjo de pilhas (Prioriza colocar 3, 2 ou 1 pilha lado a lado)
-  // Tentamos encaixar nos padrões respeitando a tolerância de 100mm por lado
+  // 3. Teste de arranjo de pilhas nos paletes padrão
   for (let n = 3; n >= 1; n--) {
     const largTotalChapas = n * of.larg;
     const comprChapa = of.compr;
 
-    // Procura se esse arranjo cabe em algum dos paletes padrão (1000 ou 1010)
     const melhorPadrao = padroes.find(p => 
       largTotalChapas <= p + tolMax && 
-      largTotalChapas >= p - 50 && // Evita palete excessivamente largo para a chapa
+      largTotalChapas >= p - 50 && 
       comprChapa <= p + tolMax &&
       comprChapa >= p - 50
     );
 
     if (melhorPadrao) {
-      esc = { n, padrao: true, pad: melhorPadrao, medida: "Padrão " + melhorPadrao + "x" + mejorPadrao };
+      esc = { n, padrao: true, pad: melhorPadrao, medida: "Padrão " + melhorPadrao + "x" + melhorPadrao };
       break;
     }
   }
 
-  // 4. Se não couber nos padrões, calcula o tamanho Sob Medida otimizado para a carreta
+  // 4. Cálculo Sob Medida (se não couber nos padrões)
   if (!esc) {
-    const folga = 40; // 20mm de folga de cada lado para amarração
-    const r10 = v => Math.ceil(v / 10) * 10;
+    const folga = 20; // Exatamente 20 mm de sobra total (10 mm de cada lado para amarração)
     
     let n = 1;
-    // Carreta tem ~2420mm internos úteis. Para irem dois paletes lado a lado, 
-    // a largura de UM palete não deve passar de 1200mm.
+    // Otimização para carretas: tenta colocar até 3 pilhas se a largura final não passar de 1200mm
     for (let k = 3; k >= 1; k--) {
       if ((k * of.larg + folga) <= 1200) {
         n = k;
@@ -594,10 +594,10 @@ function calcPalete(of) {
       }
     }
 
-    let largPalete = r10(n * of.larg + folga);
-    let comprPalete = r10(of.compr + folga);
+    // Define a medida exata sem arredondar para múltiplos de 10
+    let largPalete = (n * of.larg) + folga;
+    let comprPalete = of.compr + folga;
 
-    // Se mesmo com 1 pilha passar de 1200mm, ocupará o meio da carreta sozinho
     esc = { n, padrao: false, pad: null, medida: largPalete + "x" + comprPalete };
   }
 
@@ -606,7 +606,6 @@ function calcPalete(of) {
 
   return { ...esc, pilha, porPalete, paletes: totalPaletes };
 }
-
 function usaPalete() {
   const s = calcPalete(ofDoForm());
   if (!s) return;
