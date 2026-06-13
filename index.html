@@ -457,14 +457,23 @@ function arranjosPorFormato(largMM) {
   if (!largMM) return [];
   return db.params.formatos
     .map(f => {
-      const a = Math.floor((f - 20) / largMM);
+      let a = Math.floor((f - 20) / largMM);
+      if (a > 3) a = 3; // Limita rigidamente em no máximo 3 chapas (limite da máquina)
       return a >= 1 ? { bobina: f, arranjo: a, ponta: f - a * largMM, refile: (f - a * largMM) / f } : null;
     })
     .filter(Boolean);
 }
+
 function melhor(largMM) {
   const t = arranjosPorFormato(largMM);
-  return t.length ? t.reduce((m, x) => x.refile < m.refile ? x : m) : null;
+  if (!t.length) return null;
+  
+  // Prioriza: 1º maior quantidade de chapas (arranjo); 2º menor refile em caso de empate
+  return t.reduce((m, x) => {
+    if (x.arranjo > m.arranjo) return x;
+    if (x.arranjo === m.arranjo && x.refile < m.refile) return x;
+    return m;
+  });
 }
 
 /* ---------- abas ---------- */
