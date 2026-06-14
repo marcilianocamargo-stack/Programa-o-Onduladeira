@@ -538,100 +538,73 @@ function ofDoForm() {
     cancelada: false
   };
 }
-
-/* Novas regras de paletização Prime 2026:
-   - Padrões rígidos: 1000x1000 e 1010x1010
-   - Sobra máxima: 100mm por lado (200mm total)
-   - Otimização para carretas (largura combinada na carroceria) */
-/* Novas regras de paletização Prime com Otimização de Custo (Até 4 pilhas e Giro de Chapa):
-   - Testa arranjos de 1 a 4 pilhas para encontrar o menor número de paletes.
-   - Considera o travamento com folhas intermediárias (sem risco de tombar).
-   - Garante que a dimensão de encaixe na largura da carreta seja <= 1200mm para caber em dupla.
-   - Folga de amarração rígida de 20mm no total. */
+/* Novas regras de paletização Prime (Preenchimento em Grade):
+   - Limite rígido de Largura: Máximo 1200mm (para caber em dupla na carreta).
+   - Limite de Comprimento: Até 2000mm (aproveitando os 14 metros da carreta).
+   - Calcula quantas pilhas cabem na largura (L) e quantas cabem no comprimento (C).
+   - Multiplica as duas direções para colocar o máximo de chapas e economizar madeira. */
 function calcPalete(of) {
   const P = db.params.palete;
   if (!P || !of.larg || !of.compr || !of.qtde) return null;
 
   // 1. Quantidade por pilha (altura cheia de 1220 mm)
   const mult = of.onda === 'D' ? P.multD : (of.onda === 'C' ? P.multC : P.multB);
-  let pilha = Math.floor((1220 / 100) * mult);
+  let灵 pilha = Math.floor((1220 / 100) * mult);
   if (pilha < 1) pilha = 1;
 
-  const padroes = [1000, 1010]; 
-  const tolMax = 200; 
-  const folga = 20; // 20mm de folga total
+  const folga = 20; // 20mm de folga total na madeira
 
-  let melhorArranjo = null;
+  // 2. Calcula quantas pilhas cabem na LARGURA do palete (Máximo 1200mm na carreta)
+  // Quantas vezes a largura da chapa cabe em 1200mm (descontando a folga)
+  let pilhasNaLarg = Math.floor((1200 - folga) / of.larg);
+  if (pilhasNaLarg < 1) pilhasNaLarg = 1;
+  if (pilhasNaLarg > 4) pilhasNaLarg = 4; // Trava técnica de segurança por bloco
 
-  // 2. Varre as possibilidades de 1 a 4 pilhas para achar a combinação mais econômica
-  // k = quantidade de pilhas lado a lado
-  for (let k = 1; k <= 4; k++) {
-    
-    // Posição Normal: Largura das pilhas combinadas vira a "Largura" do palete
-    let dimLarg1 = (k * of.larg) + folga;
-    let dimCompr1 = of.compr + folga;
-    
-    // Posição Girada: O comprimento da chapa vira a "Largura" do palete (na largura da carreta)
-    let dimLarg2 = of.compr + folga;
-    let dimCompr2 = (k * of.larg) + folga;
+  // 3. Calcula quantas fileiras cabem no COMPRIMENTO do palete (Máximo 2000mm)
+  let fileirasNoCompr = Math.floor((2000 - folga) / of.compr);
+  if (fileirasNoCompr < 1) fileirasNoCompr = 1;
 
-    // Cenário 1: Posição Normal cabe em dupla na carreta (dimLarg1 <= 1200mm)
-    if (dimLarg1 <= 1200 && dimCompr1 <= 2000) {
-      let porPalete = pilha * k;
-      let totalPaletes = Math.ceil(of.qtde / porPalete);
-      
-      if (!melhorArranjo || totalPaletes < melhorArranjo.paletes) {
-        melhorArranjo = { n: k, girado: false, larg: dimLarg1, compr: dimCompr1, paletes: totalPaletes };
-      }
-    }
+  // Total de pilhas no mesmo palete (Grade ex: 3 na largura x 2 no comprimento = 6 pilhas)
+  let totalPilhasPalete = pilhasNaLarg * fileirasNoCompr;
 
-    // Cenário 2: Posição Girada cabe em dupla na carreta (dimLarg2 <= 1200mm)
-    if (dimLarg2 <= 1200 && dimCompr2 <= 2000) {
-      let porPalete = pilha * k;
-      let totalPaletes = Math.ceil(of.qtde / porPalete);
-      
-      if (!melhorArranjo || totalPaletes < melhorArranjo.paletes) {
-        melhorArranjo = { n: k, girado: true, larg: dimLarg2, compr: dimCompr2, paletes: totalPaletes };
-      }
-    }
+  // 4. Define as dimensões finais exatas do palete sob medida
+  let largPalete = (pilhasNaLarg * of.larg) + folga;
+  let comprPalete = (fileirasNoCompr * of.compr) + folga;
+
+  // 5. Calcula o volume e total de paletes necessários
+  const porPalete = pilha * totalPilhasPalete;
+  const totalPaletes = Math.ceil(of.qtde / porPalete);
+
+  // Verifica se por acaso o tamanho bate com os paletes padrão (1000x1000 ou 1010x1010)
+  const padroes = [1000, 1010];
+  const pad = padroes.find(p => 
+    largPalete <= p + 200 && largPalete >= p - 50 &&
+    comprPalete <= p + 200 && comprPalete >= p - 50
+  );
+
+  if (pad) {
+    return {
+      n: totalPilhasPalete,
+      padrao: true,
+      pad,
+      medida: "Padrão " + pad + "x" + pad,
+      pilha,
+      porPalete,
+      paletes: totalPaletes
+    };
   }
 
-  // 3. Verifica se o melhor arranjo encontrado se encaixa em um palete padrão da fábrica
-  if (melhorArranjo) {
-    const pad = padroes.find(p => 
-      melhorArranjo.larg <= p + tolMax && melhorArranjo.larg >= p - 50 &&
-      melhorArranjo.compr <= p + tolMax && melhorArranjo.compr >= p - 50
-    );
-
-    if (pad) {
-      return {
-        n: melhorArranjo.n,
-        padrao: true,
-        pad,
-        medida: "Padrão " + pad + "x" + pad + (melhorArranjo.girado ? " (Girado)" : ""),
-        pilha,
-        porPalete: pilha * melhorArranjo.n,
-        paletes: melhorArranjo.paletes
-      };
-    } else {
-      // Se não for padrão, gera a medida exata (Ex: 947x1256)
-      return {
-        n: melhorArranjo.n,
-        padrao: false,
-        pad: null,
-        medida: melhorArranjo.larg + "x" + melhorArranjo.compr,
-        pilha,
-        porPalete: pilha * melhorArranjo.n,
-        paletes: melhorArranjo.paletes
-      };
-    }
-  }
-
-  // 4. Caso extremo (Chapa gigante que ocupa o meio da carreta sozinha)
-  let largPalete = of.larg + folga;
-  let comprPalete = of.compr + folga;
-  return { n: 1, padrao: false, pad: null, medida: largPalete + "x" + comprPalete, pilha, porPalete: pilha, paletes: Math.ceil(of.qtde / pilha) };
+  return {
+    n: totalPilhasPalete,
+    padrao: false,
+    pad: null,
+    medida: largPalete + "x" + comprPalete,
+    pilha,
+    porPalete,
+    paletes: totalPaletes
+  };
 }
+
 function usaPalete() {
   const s = calcPalete(ofDoForm());
   if (!s) return;
