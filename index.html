@@ -171,6 +171,7 @@ details .corpo{padding:10px 0}
         <div class="row">
           <div><label>Data de produção</label><input type="date" id="fData" required></div>
           <div><label>Nº da OF</label><input type="number" id="fOF" inputmode="numeric" required></div>
+          <div><label>OC (ordem de compra)</label><input id="fOC" autocomplete="off" placeholder="—"></div>
         </div>
         <label>Cliente</label>
         <input id="fCliente" list="dlClientes" autocomplete="off" required>
@@ -530,7 +531,7 @@ function ofDoForm() {
   return {
     id: $('fEditId').value || null,
     data: $('fData').value, cliente: $('fCliente').value.trim(),
-    of: $('fOF').value, produto: cod, onda,
+    of: $('fOF').value, oc: $('fOC').value.trim(), produto: cod, onda,
     qtde: +$('fQtde').value || 0, larg: +$('fLarg').value || 0, compr: +$('fCompr').value || 0,
     vinco: $('fVinco').value.trim() || 'x',
     arranjo: +$('fArranjo').value || 1, bobina: +$('fBobina').value || 0,
@@ -761,7 +762,7 @@ function editaOF(id) {
   if (!o) return;
   trocaAba('nova');
   $('fEditId').value = o.id; $('fData').value = o.data; $('fCliente').value = o.cliente;
-  $('fOF').value = o.of; $('fProduto').value = o.produto + '|' + o.onda;
+  $('fOF').value = o.of; $('fOC').value = o.oc || ''; $('fProduto').value = o.produto + '|' + o.onda;
   $('fQtde').value = o.qtde; $('fLarg').value = o.larg; $('fCompr').value = o.compr;
   $('fVinco').value = o.vinco;
   aoMudarProduto();
@@ -845,7 +846,7 @@ function desenhaProg() {
 /* ---------- exportação Excel (formato jun26) ---------- */
 function exportaXLSX() {
   if (!db.ofs.length) { alert('Não há OFs para exportar.'); return; }
-  const head = ['Seq.Prod', 'Cliente', 'P.O.', 'Data Prod', 'Qtde. Prod.', 'OF', 'Qtde Pedido',
+ const head = ['Seq.Prod', 'Cliente', 'P.O.', 'Data Prod', 'Qtde. Prod.', 'OF', 'OC', 'Qtde Pedido',
     'largura', 'comprimento (facão)', 'Sliter Vincadeira', 'm²', 'ML', 't/prod', 'Min prod', 'kg',
     'Arranjo', 'Formato bobinas', 'Lagura util', 'Ponta Refile', 'Refile',
     'Capa  Forradeira', 'MB', 'CIB', 'MC', 'CIC', 'Palete Qtde', 'Palete (medida LxC)'];
@@ -862,7 +863,7 @@ function exportaXLSX() {
     else { capa = pap[0]; MB = pap[1]; CIB = pap[2]; }
     const canc = o.cancelada;
     if (canc) linhasCancel.add(linhas.length);
-    linhas.push([dataBR(o.data), o.cliente, poCodigo(o), '', '', +o.of, o.qtde,
+    linhas.push([dataBR(o.data), o.cliente, poCodigo(o), '', '', +o.of, o.oc || '', o.qtde,
       o.larg / 1000, o.compr / 1000, o.vinco,
       +c.m2.toFixed(3), +c.ml.toFixed(2), +(c.ml / db.params.velocidade / 60).toFixed(4),
       canc ? '' : +c.min.toFixed(2), canc || c.kg == null ? '' : +c.kg.toFixed(2),
@@ -876,7 +877,7 @@ function exportaXLSX() {
   const somaKg = ativos.reduce((a, c) => a + (c.kg || 0), 0);
   const mediaRef = ativos.length ? ativos.reduce((a, c) => a + (c.refile || 0), 0) / ativos.length : 0;
   const tot = new Array(head.length).fill('');
-  tot[13] = 'TOTAIS'; tot[14] = +somaKg.toFixed(1); tot[19] = +mediaRef.toFixed(4);
+  tot[14] = 'TOTAIS'; tot[15] = +somaKg.toFixed(1); tot[20] = +mediaRef.toFixed(4);
   linhas.push([], tot);
 
   const ws = XLSX.utils.aoa_to_sheet(linhas);
