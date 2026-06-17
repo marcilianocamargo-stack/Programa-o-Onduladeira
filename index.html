@@ -785,10 +785,14 @@ function excluiOF(id) {
 }
 
 /* ---------- programação ---------- */
-const ordemOnda = { B: 0, C: 1, D: 2 };
-/* dentro do dia: bobina mais larga primeiro; mesmo cliente agrupado; depois nº da OF */
+const ordemOnda = { D: 0, B: 1, C: 2 };
+/* dentro do dia: cliente → tipo de onda (D/BC → B → C) → bobina maior primeiro → nº da OF */
 function cmpProg(a, b) {
-  return (b.bobina - a.bobina) || a.cliente.localeCompare(b.cliente) || (+a.of - +b.of);
+  const cc = a.cliente.localeCompare(b.cliente);
+  if (cc !== 0) return cc;
+  const oa = ordemOnda[a.onda] ?? 9, ob = ordemOnda[b.onda] ?? 9;
+  if (oa !== ob) return oa - ob;
+  return (b.bobina - a.bobina) || (+a.of - +b.of);
 }
 function desenhaProg() {
   const cont = $('listaProg');
@@ -848,10 +852,14 @@ const TURNO_MIN = 480;        // 8 h × 60 min
 const PESO_BOBINA_KG = 1000;  // kg por bobina física
 
 function sortOFsDia(ofs) {
-  // 1. bobina maior → menor  2. mesmo cliente  3. mesmo vinco (menos setup)
+  // 1. Cliente  2. Tipo de onda (D=dupla/BC → B → C)  3. Bobina maior → menor  4. Vinco (menos trocas)
+  const ondaOrd = { D: 0, B: 1, C: 2 };
   return ofs.slice().sort((a, b) => {
+    const cc = a.cliente.localeCompare(b.cliente);
+    if (cc !== 0) return cc;
+    const oa = ondaOrd[a.onda] ?? 9, ob = ondaOrd[b.onda] ?? 9;
+    if (oa !== ob) return oa - ob;
     if (b.bobina !== a.bobina) return b.bobina - a.bobina;
-    if (a.cliente !== b.cliente) return a.cliente.localeCompare(b.cliente);
     if (a.vinco !== b.vinco) return a.vinco.localeCompare(b.vinco);
     return +a.of - +b.of;
   });
