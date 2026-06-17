@@ -1191,6 +1191,71 @@ function exportaXLSX() {
 
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'programacao');
+
+  // ── Segunda aba: tabela limpa ──
+  const HEAD2 = ['Seq.Prod','Cliente','P.O.','Data Prod','Qtde. Prod.',
+                 'OF','OC','Qtde Pedido','Largura m','Compr m (facão)',
+                 'Slitter Vincadeira','m²','ML','t/prod h','Min prod','kg','Arranjo','Formato Bobina mm'];
+  const NC2 = HEAD2.length;
+  const aoa2 = [], est2 = {}, merges2 = [];
+  function addRow2(cells, styleFn) {
+    while (cells.length < NC2) cells.push('');
+    const r2 = aoa2.length;
+    aoa2.push(cells);
+    for (let ci = 0; ci < NC2; ci++) {
+      const ref = XLSX.utils.encode_cell({ r: r2, c: ci });
+      est2[ref] = styleFn(ci);
+    }
+    return r2;
+  }
+  // Título
+  const rT2 = addRow2(['PROGRAMAÇÃO ONDULADEIRA — PRIME · Gerado em ' + new Date().toLocaleString('pt-BR')],
+    () => ({ font:{ bold:true, sz:13, color:{ rgb:C.hbg } } }));
+  merges2.push({ s:{ r:rT2, c:0 }, e:{ r:rT2, c:NC2-1 } });
+  // Cabeçalho
+  addRow2([...HEAD2], () => ({
+    font:{ bold:true, color:{ rgb:C.hfg }, sz:10 },
+    fill:{ fgColor:{ rgb:C.hbg } }, border:b4,
+    alignment:{ horizontal:'center', wrapText:true, vertical:'center' }
+  }));
+  // Linhas de dados — ordenadas por data, depois pela mesma lógica (cliente→onda→bobina)
+  let seq2 = 0;
+  Object.keys(porDia).sort().forEach(dia => {
+    const ativos2 = porDia[dia].filter(o => !o.cancelada);
+    if (!ativos2.length) return;
+    sortOFsDia(ativos2).forEach(o => {
+      const cc2 = calcOF(o);
+      seq2++;
+      addRow2([
+        seq2, o.cliente, poCodigo(o), dataBR(o.data), '',
+        +o.of, o.oc || '', o.qtde,
+        +(o.larg/1000).toFixed(3), +(o.compr/1000).toFixed(3),
+        o.vinco,
+        +cc2.m2.toFixed(3),
+        cc2.ml != null ? +cc2.ml.toFixed(1) : '',
+        cc2.min != null ? +(cc2.min/60).toFixed(4) : '',
+        cc2.min != null ? +cc2.min.toFixed(2) : '',
+        cc2.kg != null ? +cc2.kg.toFixed(1) : '',
+        o.arranjo, o.bobina
+      ], ci => ({
+        font:{ bold: ci===1 },
+        fill:{ fgColor:{ rgb:'FFFFFF' } }, border:b4,
+        alignment:{ horizontal: ci>=11 ? 'right':'left' },
+        numFmt: ci===8||ci===9 ? '0.000' : ci===11 ? '0.000' :
+                ci===12 ? '0.0' : ci===13 ? '0.0000' : ci===14 ? '0.00' : undefined
+      }));
+    });
+  });
+  const ws2 = XLSX.utils.aoa_to_sheet(aoa2);
+  Object.entries(est2).forEach(([ref, s]) => { if (ws2[ref]) ws2[ref].s = s; });
+  ws2['!cols'] = [
+    {wch:9},{wch:22},{wch:8},{wch:11},{wch:10},
+    {wch:8},{wch:8},{wch:10},{wch:10},{wch:13},
+    {wch:22},{wch:9},{wch:8},{wch:9},{wch:9},{wch:8},{wch:8},{wch:14}
+  ];
+  ws2['!merges'] = merges2;
+  XLSX.utils.book_append_sheet(wb, ws2, 'tabela_limpa');
+
   const nome = 'Programacao_Prime_' + new Date().toISOString().slice(0, 10) + '.xlsx';
   const dados = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
   const blob = new Blob([dados], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
