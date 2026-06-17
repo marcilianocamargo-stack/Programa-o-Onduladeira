@@ -1,4 +1,4 @@
-a<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
@@ -986,8 +986,8 @@ function exportaXLSX() {
   db.ofs.forEach(o => { (porDia[o.data] = porDia[o.data] || []).push(o); });
 
   const NCOLS = 17;
-  const HEAD = ['Seq', 'Bobina', 'Cliente', 'OF', 'Produto', 'Qtde', 'Larg mm',
-    'Compr mm', 'Vinco', 'Papéis', 'm²', 'kg', 'Prod min', 'Parada min',
+  const HEAD = ['Seq', 'Bobina', 'Cliente', 'OF', 'Produto', 'Qtde', 'Largura m',
+    'Compr m', 'Vinco', 'Papéis', 'm²', 'kg', 'Prod min', 'Parada min',
     'Total min', 'Acum min', 'Acum kg'];
   const C = {
     hbg:'0F1E2E', hfg:'FFFFFF', sbg:'1A3A5C', sfg:'FFFFFF', sbg2:'2E5C8C',
@@ -1032,6 +1032,25 @@ function exportaXLSX() {
     const sim = simulaDia(porDia[dia]);
     if (!sim) return;
 
+    // --- Resumo por cliente ---
+    const cliStats = {};
+    let _pendStop = null;
+    sim.linhas.forEach(ln => {
+      if (ln.tipo === 'parada') { _pendStop = ln; }
+      else if (ln.tipo === 'of') {
+        const cli = ln.of.cliente;
+        if (!cliStats[cli]) cliStats[cli] = { kg: 0, ofs: [], trocasBobina: 0, ajustesFaca: 0, trocasFisicas: 0 };
+        cliStats[cli].kg += ln.c.kg || 0;
+        cliStats[cli].ofs.push(ln.of.of);
+        if (_pendStop) {
+          if (_pendStop.desc.toLowerCase().includes('bobina')) cliStats[cli].trocasBobina++;
+          else cliStats[cli].ajustesFaca++;
+          _pendStop = null;
+        }
+        cliStats[cli].trocasFisicas += (ln.reelChanges || []).reduce((s, rc) => s + rc.n, 0);
+      }
+    });
+
     // Cabeçalho do dia
     const rDia = addRow(['', '', 'DIA: ' + dataBR(dia) +
       '   |   Produção estimada: ' + fmt(sim.acumKg, 0) + ' kg' +
@@ -1061,7 +1080,7 @@ function exportaXLSX() {
           : '';
         addRow([
           seq, o.bobina, o.cliente, +o.of, poCodigo(o), o.qtde,
-          o.larg, o.compr, o.vinco, (o.papeis||[]).join(' / '),
+          +(o.larg/1000).toFixed(3), +(o.compr/1000).toFixed(3), o.vinco, (o.papeis||[]).join(' / '),
           +cc.m2.toFixed(2), cc.kg ? +cc.kg.toFixed(1) : '',
           +ln.prodMin.toFixed(1), ln.paradaMin>0 ? +ln.paradaMin.toFixed(1) : '',
           +(ln.prodMin+ln.paradaMin).toFixed(1), +ln.acumMin.toFixed(1), +ln.acumKg.toFixed(1)
@@ -1069,7 +1088,8 @@ function exportaXLSX() {
           font: { bold: c===2 },
           fill: { fgColor:{ rgb:C.ofbg } },
           border: b4,
-          alignment:{ horizontal: c>=10 ? 'right':'left' }
+          alignment:{ horizontal: c>=10 ? 'right':'left' },
+          numFmt: (c===6||c===7) ? '0.000' : undefined
         }));
 
       } else if (ln.tipo === 'section_total') {
@@ -1105,6 +1125,25 @@ function exportaXLSX() {
         merges.push({ s:{ r:rNota, c:2 }, e:{ r:rNota, c:NCOLS-1 } });
         alturas[rNota] = { hpt: 72 }; // ~5 linhas de texto
 
+        // --- Resumo por cliente ---
+        const rCliH = addRow(['', '', 'RESUMO POR CLIENTE — ' + dataBR(dia)],
+          () => ({ font:{ bold:true, sz:11, color:{ rgb:C.sfg } }, fill:{ fgColor:{ rgb:C.sbg } }, border:b4,
+                   alignment:{ horizontal:'left' } }));
+        merges.push({ s:{ r:rCliH, c:2 }, e:{ r:rCliH, c:NCOLS-1 } });
+        Object.entries(cliStats).forEach(([cli, s]) => {
+          const txt = 'Trocas de bobina (formato): ' + s.trocasBobina +
+            '   |   Ajustes de facas/sliters: ' + s.ajustesFaca +
+            '   |   Trocas fisicas de bobina de papel: ' + s.trocasFisicas +
+            '   |   Estimativa de producao: ' + fmt(s.kg, 0) + ' kg' +
+            '   |   OFs: ' + s.ofs.join(', ');
+          const rCli = addRow(['', '', cli, txt],
+            c => ({ font:{ bold: c===2, sz:10, color:{ rgb: c===2 ? C.hbg : '444444' } },
+                    fill:{ fgColor:{ rgb: c===2 ? C.stbg : 'F5F8FC' } },
+                    border:b4, alignment:{ horizontal:'left', wrapText: c>=3 } }));
+          merges.push({ s:{ r:rCli, c:3 }, e:{ r:rCli, c:NCOLS-1 } });
+          alturas[rCli] = { hpt: 30 };
+        });
+
       } else if (ln.tipo === 'fora_header') {
         const r = addRow(['','','OFs QUE NAO CABEM NO TURNO — continuar no proximo dia'],
           () => ({ font:{ bold:true, color:{ rgb:C.forafg } }, fill:{ fgColor:{ rgb:C.forabg } }, border:b4 }));
@@ -1114,10 +1153,11 @@ function exportaXLSX() {
         seq++;
         const o = ln.of, cc = ln.c;
         addRow([seq, o.bobina, o.cliente, +o.of, poCodigo(o), o.qtde,
-          o.larg, o.compr, o.vinco, (o.papeis||[]).join(' / '),
+          +(o.larg/1000).toFixed(3), +(o.compr/1000).toFixed(3), o.vinco, (o.papeis||[]).join(' / '),
           +cc.m2.toFixed(2), cc.kg ? +cc.kg.toFixed(1) : '',
           +cc.min.toFixed(1),'','','',''],
-          () => ({ font:{ italic:true, color:{ rgb:C.forafg } }, fill:{ fgColor:{ rgb:C.forabg } }, border:b4 }));
+          c => ({ font:{ italic:true, color:{ rgb:C.forafg } }, fill:{ fgColor:{ rgb:C.forabg } }, border:b4,
+                  numFmt: (c===6||c===7) ? '0.000' : undefined }));
       }
     });
 
