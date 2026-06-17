@@ -843,59 +843,286 @@ function desenhaProg() {
   dl.innerHTML = [...new Set(db.ofs.map(o => o.cliente))].map(c => '<option value="' + c + '">').join('');
 }
 
-/* ---------- exportação Excel (formato jun26) ---------- */
+/* ---------- SIMULAÇÃO / SEQUENCIAMENTO DIÁRIO ---------- */
+const TURNO_MIN = 480;        // 8 h × 60 min
+const PESO_BOBINA_KG = 1000;  // kg por bobina física
+
+function sortOFsDia(ofs) {
+  // 1. bobina maior → menor  2. mesmo cliente  3. mesmo vinco (menos setup)
+  return ofs.slice().sort((a, b) => {
+    if (b.bobina !== a.bobina) return b.bobina - a.bobina;
+    if (a.cliente !== b.cliente) return a.cliente.localeCompare(b.cliente);
+    if (a.vinco !== b.vinco) return a.vinco.localeCompare(b.vinco);
+    return +a.of - +b.of;
+  });
+}
+
+function mprOF(of) {
+  // metros-de-chapa que cada rolo físico aguenta por posição de papel
+  const p = produto(of.produto);
+  const miolos = p.tipo === 'D' ? MIOLOS_D : MIOLOS_S;
+  return (of.papeis || []).map((cod, i) => {
+    const pp = papel(cod);
+    if (!pp || !of.bobina) return Infinity;
+    const fator = miolos.includes(i) ? db.params.fatorMiolo : 1.0;
+    // metros de papel por rolo = 1000 kg × 1000 g/kg ÷ (g/m² × largura_m)
+    // metros de chapa = metros de papel ÷ fator
+    return (PESO_BOBINA_KG * 1000) / (pp.g * (of.bobina / 1000)) / fator;
+  });
+}
+
+function simularOF(mlOf, mpr, reelAtual, np) {
+  const VEL = db.params.velocidade;
+  let remaining = mlOf, prodMin = 0, paradaMin = 0;
+  const reelChanges = [];
+  const reel = reelAtual ? reelAtual.slice() : mpr.slice();
+
+  while (remaining > 1e-6) {
+    let minR = Infinity;
+    for (let i = 0; i < np; i++) if (reel[i] < minR) minR = reel[i];
+
+    if (minR >= remaining - 1e-6) {
+      prodMin += remaining / VEL;
+      for (let i = 0; i < np; i++) reel[i] -= remaining;
+      remaining = 0;
+    } else {
+      prodMin += minR / VEL;
+      remaining -= minR;
+      const ranOut = [];
+      for (let i = 0; i < np; i++) { reel[i] -= minR; if (reel[i] <= 1e-6) ranOut.push(i); }
+      const nChange = ranOut.length;
+      const tChange = nChange >= np ? 20 : nChange * 7;
+      paradaMin += tChange;
+      reelChanges.push({ n: nChange, t: tChange });
+      ranOut.forEach(i => { reel[i] = mpr[i]; });
+    }
+  }
+  return { prodMin, paradaMin, reelChanges, reelFinal: reel };
+}
+
+function simulaDia(ofsDodia) {
+  const ativos = ofsDodia.filter(o => !o.cancelada);
+  if (!ativos.length) return null;
+
+  const sorted = sortOFsDia(ativos);
+  const linhas = [];
+  let prevOF = null, reelAtual = null, currentBobina = null;
+  let acumMin = 0, acumKg = 0;
+  let secaoKg = 0, secaoProdMin = 0, secaoParadaMin = 0;
+  let totalProdMin = 0, totalParadaMin = 0;
+  let turnoCheio = false;
+  const ofsFora = [];
+
+  const npOf = of => produto(of.produto).tipo === 'D' ? 5 : 3;
+
+  for (const of of sorted) {
+    if (turnoCheio) { ofsFora.push(of); continue; }
+
+    const c = calcOF(of);
+    const mpr = mprOF(of);
+    const np = npOf(of);
+
+    // Calcular pausa de transição tentativa (antes de confirmar)
+    const isBobinaChange = of.bobina !== currentBobina;
+    let transMin = 0;
+    if (isBobinaChange && currentBobina !== null) transMin = 20;
+    else if (!isBobinaChange && prevOF) transMin = prevOF.vinco !== of.vinco ? 20 : 2;
+
+    const reelInicio = isBobinaChange ? mpr.slice() : reelAtual;
+    const sim = simularOF(c.ml, mpr, reelInicio, np);
+    const totalNeeded = transMin + sim.prodMin + sim.paradaMin;
+
+    if (acumMin + totalNeeded > TURNO_MIN + 0.1) {
+      ofsFora.push(of); turnoCheio = true; continue;
+    }
+
+    // ── Confirmar transição ──
+    if (isBobinaChange) {
+      if (currentBobina !== null) {
+        linhas.push({ tipo: 'section_total', bobina: currentBobina, kg: secaoKg, prodMin: secaoProdMin, paradaMin: secaoParadaMin });
+        acumMin += 20; totalParadaMin += 20;
+        linhas.push({ tipo: 'parada', desc: 'Troca de bobina: ' + currentBobina + ' → ' + of.bobina + ' mm (conjunto completo)', min: 20, acumMin, acumKg });
+      }
+      currentBobina = of.bobina;
+      secaoKg = 0; secaoProdMin = 0; secaoParadaMin = 0;
+      linhas.push({ tipo: 'section_header', bobina: of.bobina });
+    } else if (prevOF) {
+      acumMin += transMin; totalParadaMin += transMin; secaoParadaMin += transMin;
+      const descVinco = prevOF.vinco !== of.vinco
+        ? 'Troca de pedido + vinco (' + prevOF.vinco + ' → ' + of.vinco + ')'
+        : 'Troca de pedido (ajuste de facas)';
+      linhas.push({ tipo: 'parada', desc: descVinco, min: transMin, acumMin, acumKg });
+    }
+
+    // ── Confirmar OF ──
+    acumMin += sim.prodMin + sim.paradaMin;
+    const kgOf = c.kg || 0;
+    acumKg += kgOf; secaoKg += kgOf;
+    secaoProdMin += sim.prodMin; secaoParadaMin += sim.paradaMin;
+    totalProdMin += sim.prodMin; totalParadaMin += sim.paradaMin;
+    reelAtual = sim.reelFinal;
+    prevOF = of;
+
+    linhas.push({ tipo: 'of', of, c, prodMin: sim.prodMin, paradaMin: sim.paradaMin, reelChanges: sim.reelChanges, acumMin, acumKg });
+  }
+
+  if (currentBobina !== null)
+    linhas.push({ tipo: 'section_total', bobina: currentBobina, kg: secaoKg, prodMin: secaoProdMin, paradaMin: secaoParadaMin });
+
+  linhas.push({ tipo: 'total', prodMin: totalProdMin, paradaMin: totalParadaMin, acumMin, acumKg });
+
+  if (ofsFora.length) {
+    linhas.push({ tipo: 'fora_header' });
+    ofsFora.forEach(of => linhas.push({ tipo: 'fora', of, c: calcOF(of) }));
+  }
+  return { linhas, acumKg, acumMin, ofsFora };
+}
+
+/* ---------- exportação Excel (programação diária com simulação) ---------- */
 function exportaXLSX() {
   if (!db.ofs.length) { alert('Não há OFs para exportar.'); return; }
- const head = ['Seq.Prod', 'Cliente', 'P.O.', 'Data Prod', 'Qtde. Prod.', 'OF', 'OC', 'Qtde Pedido',
-    'largura', 'comprimento (facão)', 'Sliter Vincadeira', 'm²', 'ML', 't/prod', 'Min prod', 'kg',
-    'Arranjo', 'Formato bobinas', 'Lagura util', 'Ponta Refile', 'Refile',
-    'Capa  Forradeira', 'MB', 'CIB', 'MC', 'CIC', 'Palete Qtde', 'Palete (medida LxC)'];
-  const linhas = [['Programação Onduladeira — Prime'], head];
-  const linhasCancel = new Set();
-  const ord = db.ofs.slice().sort((a, b) => a.data.localeCompare(b.data) || cmpProg(a, b));
-  ord.forEach(o => {
-    const c = calcOF(o), p = produto(o.produto);
-    const pap = o.papeis || [];
-    // mapeia camadas no layout jun26: Capa | MB | CIB | MC | CIC
-    let capa, MB, CIB, MC, CIC;
-    if (p.tipo === 'D') [capa, MC, CIB, MB, CIC] = [pap[0], pap[1], pap[2], pap[3], pap[4]];
-    else if (o.onda === 'C') { capa = pap[0]; MC = pap[1]; CIC = pap[2]; }
-    else { capa = pap[0]; MB = pap[1]; CIB = pap[2]; }
-    const canc = o.cancelada;
-    if (canc) linhasCancel.add(linhas.length);
-    linhas.push([dataBR(o.data), o.cliente, poCodigo(o), '', '', +o.of, o.oc || '', o.qtde,
-      o.larg / 1000, o.compr / 1000, o.vinco,
-      +c.m2.toFixed(3), +c.ml.toFixed(2), +(c.ml / db.params.velocidade / 60).toFixed(4),
-      canc ? '' : +c.min.toFixed(2), canc || c.kg == null ? '' : +c.kg.toFixed(2),
-      o.arranjo, o.bobina, +(c.lu).toFixed(3), +c.ponta.toFixed(0),
-      c.refile == null ? '' : +c.refile.toFixed(4),
-      capa || '', MB || '', CIB || '', MC || '', canc ? 'Cancelado' : (CIC || ''),
-      o.palQtde || '', o.palMed || '']);
-  });
-  // totais
-  const ativos = ord.filter(o => !o.cancelada).map(o => calcOF(o));
-  const somaKg = ativos.reduce((a, c) => a + (c.kg || 0), 0);
-  const mediaRef = ativos.length ? ativos.reduce((a, c) => a + (c.refile || 0), 0) / ativos.length : 0;
-  const tot = new Array(head.length).fill('');
-  tot[14] = 'TOTAIS'; tot[15] = +somaKg.toFixed(1); tot[20] = +mediaRef.toFixed(4);
-  linhas.push([], tot);
 
-  const ws = XLSX.utils.aoa_to_sheet(linhas);
-  ws['!cols'] = head.map((h, i) => ({ wch: i === 1 ? 18 : Math.max(9, h.length) }));
-  ws['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 9 } }];
-  const borda = { style: 'thin', color: { rgb: 'B8C4D0' } };
-  const bordas = { top: borda, bottom: borda, left: borda, right: borda };
-  const nLin = linhas.length, nCol = head.length;
-  for (let r = 0; r < nLin; r++) for (let c = 0; c < nCol; c++) {
-    const ref = XLSX.utils.encode_cell({ r, c });
-    if (!ws[ref]) continue;
-    if (r === 0) ws[ref].s = { font: { bold: true, sz: 14 } };
-    else if (r === 1) ws[ref].s = { font: { bold: true, color: { rgb: 'FFFFFF' } },
-      fill: { fgColor: { rgb: '0F1E2E' } }, border: bordas, alignment: { wrapText: true, vertical: 'center' } };
-    else if (linhasCancel.has(r)) ws[ref].s = { font: { color: { rgb: 'C00000' }, strike: c === 1 }, border: bordas };
-    else if (r === nLin - 1) ws[ref].s = { font: { bold: true }, border: bordas };
-    else ws[ref].s = { border: bordas };
+  const porDia = {};
+  db.ofs.forEach(o => { (porDia[o.data] = porDia[o.data] || []).push(o); });
+
+  const NCOLS = 17;
+  const HEAD = ['Seq', 'Bobina', 'Cliente', 'OF', 'Produto', 'Qtde', 'Larg mm',
+    'Compr mm', 'Vinco', 'Papéis', 'm²', 'kg', 'Prod min', 'Parada min',
+    'Total min', 'Acum min', 'Acum kg'];
+  const C = {
+    hbg:'0F1E2E', hfg:'FFFFFF', sbg:'1A3A5C', sfg:'FFFFFF', sbg2:'2E5C8C',
+    pbg:'FFF3CD', pfg:'7D5A00', ofbg:'FFFFFF', stbg:'DBE7F3',
+    totbg:'C8DFC8', totfg:'0D3D1C', forabg:'FBEAE6', forafg:'C23B22', lin:'CCD8E4'
+  };
+  const brd = { style:'thin', color:{ rgb: C.lin } };
+  const b4 = { top:brd, bottom:brd, left:brd, right:brd };
+
+  const aoa = [];
+  const estilos = {};
+  const merges = [];
+
+  function addRow(cells, styleFn) {
+    while (cells.length < NCOLS) cells.push('');
+    const r = aoa.length;
+    aoa.push(cells);
+    for (let ci = 0; ci < NCOLS; ci++) {
+      const ref = XLSX.utils.encode_cell({ r, c: ci });
+      estilos[ref] = styleFn(ci);
+    }
+    return r;
   }
+
+  // Título
+  const rTit = addRow(['PROGRAMAÇÃO ONDULADEIRA — PRIME · Gerado em ' + new Date().toLocaleString('pt-BR')],
+    () => ({ font: { bold: true, sz: 13, color: { rgb: C.hbg } } }));
+  merges.push({ s:{ r:rTit, c:0 }, e:{ r:rTit, c:NCOLS-1 } });
+
+  // Cabeçalho de colunas
+  addRow([...HEAD], () => ({
+    font: { bold:true, color:{ rgb:C.hfg }, sz:10 },
+    fill: { fgColor:{ rgb:C.hbg } },
+    border: b4,
+    alignment: { horizontal:'center', wrapText:true, vertical:'center' }
+  }));
+
+  let seq = 0;
+
+  Object.keys(porDia).sort().forEach(dia => {
+    const sim = simulaDia(porDia[dia]);
+    if (!sim) return;
+
+    // Cabeçalho do dia
+    const rDia = addRow(['', '', 'DIA: ' + dataBR(dia) +
+      '   |   Produção estimada: ' + fmt(sim.acumKg, 0) + ' kg' +
+      '   |   Tempo máquina: ' + fmt(sim.acumMin, 0) + ' min de 480 min'],
+      c => ({ font:{ bold:true, sz:11, color:{ rgb:C.sfg } }, fill:{ fgColor:{ rgb:C.sbg } }, border:b4,
+              alignment: c===2 ? { horizontal:'left' } : {} }));
+    merges.push({ s:{ r:rDia, c:2 }, e:{ r:rDia, c:NCOLS-1 } });
+
+    sim.linhas.forEach(ln => {
+
+      if (ln.tipo === 'section_header') {
+        const r = addRow(['', ln.bobina + ' mm', 'BOBINA ' + ln.bobina + ' mm'],
+          () => ({ font:{ bold:true, color:{ rgb:C.sfg } }, fill:{ fgColor:{ rgb:C.sbg2 } }, border:b4 }));
+        merges.push({ s:{ r, c:2 }, e:{ r, c:NCOLS-1 } });
+
+      } else if (ln.tipo === 'parada') {
+        addRow(['','', ln.desc,'','','','','','','','','','',
+          +ln.min.toFixed(0),'',+ln.acumMin.toFixed(0),''],
+          c => ({ font:{ italic:true, color:{ rgb:C.pfg } }, fill:{ fgColor:{ rgb:C.pbg } }, border:b4,
+                  alignment:{ horizontal: c>=12 ? 'right':'left' } }));
+
+      } else if (ln.tipo === 'of') {
+        seq++;
+        const o = ln.of, cc = ln.c;
+        const reelObs = ln.reelChanges.length
+          ? ln.reelChanges.map(rc => rc.n + ' bob. (' + rc.t + 'min)').join(' + ')
+          : '';
+        addRow([
+          seq, o.bobina, o.cliente, +o.of, poCodigo(o), o.qtde,
+          o.larg, o.compr, o.vinco, (o.papeis||[]).join(' / '),
+          +cc.m2.toFixed(2), cc.kg ? +cc.kg.toFixed(1) : '',
+          +ln.prodMin.toFixed(1), ln.paradaMin>0 ? +ln.paradaMin.toFixed(1) : '',
+          +(ln.prodMin+ln.paradaMin).toFixed(1), +ln.acumMin.toFixed(1), +ln.acumKg.toFixed(1)
+        ], c => ({
+          font: { bold: c===2 },
+          fill: { fgColor:{ rgb:C.ofbg } },
+          border: b4,
+          alignment:{ horizontal: c>=10 ? 'right':'left' }
+        }));
+        // Sub-linhas para trocas físicas dentro do pedido
+        ln.reelChanges.forEach(rc => {
+          addRow(['','', '   ↳ troca ' + rc.n + ' bobina' + (rc.n>1?'s':'') + ' física' + (rc.n>1?'s':'') + ' — ' + rc.t + ' min',
+            '','','','','','','','','','', rc.t, rc.t,'',''],
+            () => ({ font:{ italic:true, sz:10, color:{ rgb:C.pfg } }, fill:{ fgColor:{ rgb:C.pbg } }, border:b4 }));
+        });
+
+      } else if (ln.tipo === 'section_total') {
+        addRow(['','','Subtotal — Bobina ' + ln.bobina + ' mm','','','','','','','','',
+          +ln.kg.toFixed(1), +ln.prodMin.toFixed(1), +ln.paradaMin.toFixed(1),
+          +(ln.prodMin+ln.paradaMin).toFixed(1),'',''],
+          c => ({ font:{ bold:true }, fill:{ fgColor:{ rgb:C.stbg } }, border:b4,
+                  alignment:{ horizontal: c>=10 ? 'right':'left' } }));
+
+      } else if (ln.tipo === 'total') {
+        const h = m => Math.floor(m/60) + 'h' + String(Math.round(m%60)).padStart(2,'0') + 'min';
+        const r = addRow(['','',
+          'TOTAL DO TURNO   Producao: ' + h(ln.prodMin) + '   Paradas: ' + h(ln.paradaMin) + '   (turno 8h = 480 min)',
+          '','','','','','','','',
+          +ln.acumKg.toFixed(1), +ln.prodMin.toFixed(1), +ln.paradaMin.toFixed(1),
+          '', +ln.acumMin.toFixed(1), +ln.acumKg.toFixed(1)],
+          c => ({ font:{ bold:true, color:{ rgb:C.totfg } }, fill:{ fgColor:{ rgb:C.totbg } }, border:b4,
+                  alignment:{ horizontal: c>=10 ? 'right':'left' } }));
+        merges.push({ s:{ r, c:2 }, e:{ r, c:10 } });
+
+      } else if (ln.tipo === 'fora_header') {
+        const r = addRow(['','','OFs QUE NAO CABEM NO TURNO — continuar no proximo dia'],
+          () => ({ font:{ bold:true, color:{ rgb:C.forafg } }, fill:{ fgColor:{ rgb:C.forabg } }, border:b4 }));
+        merges.push({ s:{ r, c:2 }, e:{ r, c:NCOLS-1 } });
+
+      } else if (ln.tipo === 'fora') {
+        seq++;
+        const o = ln.of, cc = ln.c;
+        addRow([seq, o.bobina, o.cliente, +o.of, poCodigo(o), o.qtde,
+          o.larg, o.compr, o.vinco, (o.papeis||[]).join(' / '),
+          +cc.m2.toFixed(2), cc.kg ? +cc.kg.toFixed(1) : '',
+          +cc.min.toFixed(1),'','','',''],
+          () => ({ font:{ italic:true, color:{ rgb:C.forafg } }, fill:{ fgColor:{ rgb:C.forabg } }, border:b4 }));
+      }
+    });
+
+    aoa.push(new Array(NCOLS).fill(''));
+  });
+
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  Object.entries(estilos).forEach(([ref, s]) => { if (ws[ref]) ws[ref].s = s; });
+  ws['!cols'] = [
+    {wch:5},{wch:9},{wch:26},{wch:7},{wch:8},{wch:7},
+    {wch:8},{wch:9},{wch:22},{wch:32},
+    {wch:8},{wch:8},{wch:10},{wch:11},{wch:10},{wch:10},{wch:9}
+  ];
+  ws['!merges'] = merges;
+
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'programacao');
   const nome = 'Programacao_Prime_' + new Date().toISOString().slice(0, 10) + '.xlsx';
