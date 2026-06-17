@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+a<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
@@ -1000,6 +1000,7 @@ function exportaXLSX() {
   const aoa = [];
   const estilos = {};
   const merges = [];
+  const alturas = {}; // índice de linha → altura personalizada
 
   function addRow(cells, styleFn) {
     while (cells.length < NCOLS) cells.push('');
@@ -1070,12 +1071,6 @@ function exportaXLSX() {
           border: b4,
           alignment:{ horizontal: c>=10 ? 'right':'left' }
         }));
-        // Sub-linhas para trocas físicas dentro do pedido
-        ln.reelChanges.forEach(rc => {
-          addRow(['','', '   ↳ troca ' + rc.n + ' bobina' + (rc.n>1?'s':'') + ' física' + (rc.n>1?'s':'') + ' — ' + rc.t + ' min',
-            '','','','','','','','','','', rc.t, rc.t,'',''],
-            () => ({ font:{ italic:true, sz:10, color:{ rgb:C.pfg } }, fill:{ fgColor:{ rgb:C.pbg } }, border:b4 }));
-        });
 
       } else if (ln.tipo === 'section_total') {
         addRow(['','','Subtotal — Bobina ' + ln.bobina + ' mm','','','','','','','','',
@@ -1094,6 +1089,21 @@ function exportaXLSX() {
           c => ({ font:{ bold:true, color:{ rgb:C.totfg } }, fill:{ fgColor:{ rgb:C.totbg } }, border:b4,
                   alignment:{ horizontal: c>=10 ? 'right':'left' } }));
         merges.push({ s:{ r, c:2 }, e:{ r, c:10 } });
+
+        // Bloco explicativo único ao final do dia
+        const vel = db.params.velocidade;
+        const nota = 'Estimativa de producao diaria calculada a ' + vel + ' m/min (velocidade configurada). ' +
+          'Paradas consideradas: troca de formato de bobina (conjunto completo) = 20 min; ' +
+          'ajuste de facas e sliters entre pedidos com mudanca de vinco = 20 min; ' +
+          'troca de pedido sem mudanca de vinco (ajuste de facas) = 2 min; ' +
+          'trocas fisicas de bobina de papel durante o pedido = 7 min por posicao (ou 20 min quando todas esgotam juntas). ' +
+          'Pedidos sequenciados por formato de bobina (maior para menor) e agrupados por tipo de onda (B, C ou dupla BC).';
+        const rNota = addRow(['', '', nota],
+          c => ({ font:{ italic:true, sz:9, color:{ rgb:'444444' } },
+                  fill:{ fgColor:{ rgb:'F0F4F8' } }, border:b4,
+                  alignment:{ wrapText:true, horizontal:'left', vertical:'top' } }));
+        merges.push({ s:{ r:rNota, c:2 }, e:{ r:rNota, c:NCOLS-1 } });
+        alturas[rNota] = { hpt: 72 }; // ~5 linhas de texto
 
       } else if (ln.tipo === 'fora_header') {
         const r = addRow(['','','OFs QUE NAO CABEM NO TURNO — continuar no proximo dia'],
@@ -1116,6 +1126,14 @@ function exportaXLSX() {
 
   const ws = XLSX.utils.aoa_to_sheet(aoa);
   Object.entries(estilos).forEach(([ref, s]) => { if (ws[ref]) ws[ref].s = s; });
+  // Alturas personalizadas (ex: linha de nota explicativa)
+  if (Object.keys(alturas).length) {
+    const maxR = Math.max(...Object.keys(alturas).map(Number));
+    const rows = ws['!rows'] || new Array(maxR + 1).fill(null);
+    while (rows.length <= maxR) rows.push(null);
+    Object.entries(alturas).forEach(([ri, h]) => { rows[+ri] = h; });
+    ws['!rows'] = rows;
+  }
   ws['!cols'] = [
     {wch:5},{wch:9},{wch:26},{wch:7},{wch:8},{wch:7},
     {wch:8},{wch:9},{wch:22},{wch:32},
