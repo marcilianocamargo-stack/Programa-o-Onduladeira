@@ -155,11 +155,15 @@ details .corpo{padding:10px 0}
 <main>
   <!-- PROGRAMAÇÃO -->
   <section class="pane" id="paneProg">
+    <div style="display:flex;justify-content:flex-end;margin-bottom:8px">
+      <button id="btnSortProg" class="btn mini sec" onclick="toggleSortProg()">Ordem: nº OF</button>
+    </div>
     <div id="listaProg"></div>
     <div class="acoes">
       <button class="btn" onclick="exportaXLSX()">Exportar Excel</button>
       <button class="btn" onclick="pdfOperadores()">PDF Operadores</button>
       <button class="btn sec" onclick="window.print()">Imprimir</button>
+      <button class="btn perigo" onclick="limpaOFs()">Limpar programação</button>
     </div>
   </section>
 
@@ -378,6 +382,7 @@ const MIOLOS_S = [1];           // índices que são miolo (× fator)
 const MIOLOS_D = [1, 3];
 
 let db;
+let sortProgView = 'of'; // 'of' = por nº da OF | 'prod' = por cliente/bobina (otimização)
 
 /* ---------- persistência ---------- */
 function carrega() {
@@ -801,12 +806,19 @@ function desenhaProg() {
     cont.innerHTML = '<div class="vazio">Nenhuma OF registrada.<br>Toque em <b>Nova OF</b> para começar.</div>';
     return;
   }
+  // atualiza rótulo do botão de ordenação
+  const btnS = $('btnSortProg');
+  if (btnS) btnS.textContent = sortProgView === 'of' ? 'Ordem: nº OF' : 'Ordem: prod.';
+
   const dias = {};
   db.ofs.forEach(o => { (dias[o.data] = dias[o.data] || []).push(o); });
   let html = '';
   let totKg = 0, totMin = 0, refs = [];
+  const cmpView = sortProgView === 'of'
+    ? (a, b) => +a.of - +b.of
+    : cmpProg;
   Object.keys(dias).sort().forEach(dia => {
-    const ofs = dias[dia].slice().sort(cmpProg);
+    const ofs = dias[dia].slice().sort(cmpView);
     let dKg = 0, dMin = 0;
     let cards = '';
     ofs.forEach(o => {
@@ -828,6 +840,7 @@ function desenhaProg() {
         '</div>' +
         '<div class="ops"><button onclick="editaOF(\'' + o.id + '\')">Editar</button>' +
         '<button onclick="cancelaOF(\'' + o.id + '\')">' + (o.cancelada ? 'Reativar' : 'Cancelar') + '</button>' +
+        '<button data-copy="' + o.id + '" onclick="copiaLinhaOF(\'' + o.id + '\')">Copiar</button>' +
         '<button class="del" onclick="excluiOF(\'' + o.id + '\')">Excluir</button></div></div>';
     });
     totKg += dKg; totMin += dMin;
@@ -845,6 +858,11 @@ function desenhaProg() {
   // datalist de clientes
   const dl = $('dlClientes');
   dl.innerHTML = [...new Set(db.ofs.map(o => o.cliente))].map(c => '<option value="' + c + '">').join('');
+}
+
+function toggleSortProg() {
+  sortProgView = sortProgView === 'of' ? 'prod' : 'of';
+  desenhaProg();
 }
 
 /* ---------- SIMULAÇÃO / SEQUENCIAMENTO DIÁRIO ---------- */
@@ -1340,6 +1358,63 @@ function baixa(blob, nome) {
   setTimeout(() => URL.revokeObjectURL(a.href), 4000);
 }
 
+/* ---------- copiar linha da OF para colar no Excel ---------- */
+function copiaLinhaOF(id) {
+  const o = db.ofs.find(x => x.id === id);
+  if (!o) return;
+  const cc  = calcOF(o);
+  const largM  = (o.larg / 1000).toFixed(3);
+  const comprM = (o.compr / 1000).toFixed(3);
+  const luM    = ((o.larg / 1000) * o.arranjo).toFixed(3);
+  const ponta  = o.bobina - o.larg * o.arranjo;
+  const refile = o.bobina ? (ponta / o.bobina).toFixed(4) : '';
+  const pps    = o.papeis || [];
+  // Colunas na mesma ordem da aba tabela_limpa do Excel exportado:
+  // Seq.Prod | Cliente | P.O. | Data Prod | Qtde.Prod. | OF | OC | Qtde Pedido
+  // largura | comprimento | Sliter Vincadeira | m² | ML | t/prod | Min prod | kg
+  // Arranjo | Formato bobinas | Largura util | Ponta Refile | Refile
+  // Capa Forradeira | MB | CIB | MC | CIC | Palete Qtde | Palete (medida LxC)
+  const cols = [
+    '',
+    o.cliente,
+    poCodigo(o),
+    dataBR(o.data),
+    '',
+    o.of,
+    o.oc || '',
+    o.qtde,
+    largM,
+    comprM,
+    o.vinco,
+    cc.m2  != null ? cc.m2.toFixed(3)       : '',
+    cc.ml  != null ? cc.ml.toFixed(1)        : '',
+    cc.min != null ? (cc.min/60).toFixed(4)  : '',
+    cc.min != null ? cc.min.toFixed(2)       : '',
+    cc.kg  != null ? cc.kg.toFixed(1)        : '',
+    o.arranjo,
+    o.bobina,
+    luM,
+    ponta.toFixed(0),
+    refile,
+    pps[0] || '', pps[1] || '', pps[2] || '', pps[3] || '', pps[4] || '',
+    o.palQtde || '',
+    o.palMed  || ''
+  ];
+  const tsv = cols.join('\t');
+  const btn = document.querySelector('[data-copy="' + id + '"]');
+  const ok  = () => { if (btn) { const t = btn.textContent; btn.textContent = 'Copiado!'; setTimeout(() => btn.textContent = t, 1800); } };
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(tsv).then(ok).catch(() => copiaFallback(tsv, ok));
+  } else copiaFallback(tsv, ok);
+}
+function copiaFallback(texto, cb) {
+  const ta = document.createElement('textarea');
+  ta.value = texto; ta.style.cssText = 'position:fixed;opacity:0';
+  document.body.appendChild(ta); ta.select();
+  try { document.execCommand('copy'); cb(); } catch(e) { alert('Não foi possível copiar automaticamente.'); }
+  document.body.removeChild(ta);
+}
+
 /* ---------- tabelas e parâmetros ---------- */
 function desenhaTabelas() {
   $('pVel').value = db.params.velocidade;
@@ -1460,6 +1535,12 @@ function importaJSON(inp) {
   };
   r.readAsText(f);
   inp.value = '';
+}
+function limpaOFs() {
+  if (!db.ofs.length) { alert('A programação já está vazia.'); return; }
+  if (confirm('Apagar todas as ' + db.ofs.length + ' OFs da programação?\n(Papéis, produtos e parâmetros são mantidos.)')) {
+    db.ofs = []; salva(); desenhaProg();
+  }
 }
 function zeraTudo() {
   if (confirm('Apagar TODAS as OFs e restaurar as tabelas padrão?') && confirm('Tem certeza? Não dá para desfazer.')) {
