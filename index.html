@@ -1626,6 +1626,26 @@ function adicionarFila() {
   $('inputFilaOCR').click();
 }
 
+/* Interpreta "Tipo de Papel" do OCR → {produto, onda} compatível com o cadastro.
+   Exemplos: "P60-C" → P60|C · "P25-B" → P25|B · "P55-D onda BC" → P55D|D
+   "PO60-C" / "PO50-B" são leituras OCR de "P60-C" / "P50-B" (O confundido com 0). */
+function parseTipoPapel(tipo) {
+  if (!tipo) return null;
+  const t = tipo.trim();
+  if (/onda\s*BC/i.test(t)) {              // dupla: "P55-D onda BC"
+    const m = t.match(/P[O]?(\d+)/i);
+    if (m) return { produto: 'P' + m[1] + 'D', onda: 'D' };
+  }
+  const m = t.match(/P[O]?(\d+)[^\d]+([BC])\b/i);  // simples: "P60-C", "PO60-C"
+  if (m) return { produto: 'P' + m[1], onda: m[2].toUpperCase() };
+  return null;
+}
+
+/* Converte quantidade em formato BR ("5.500" → 5500). */
+function parseQtdeBR(s) {
+  return parseInt(String(s || '').replace(/\./g, '').replace(/,/g, ''), 10) || 0;
+}
+
 async function carregaFilaOCR(fileList) {
   const metaSalva = (() => {
     try { return JSON.parse(localStorage.getItem(FILA_KEY2)) || []; } catch(e) { return []; }
@@ -1633,16 +1653,74 @@ async function carregaFilaOCR(fileList) {
 
   let novos = 0;
   for (const file of Array.from(fileList)) {
-    if (filaOCR.some(x => x.nome === file.name)) continue; // evita duplicatas
-    const meta = metaSalva.find(x => x.nome === file.name);
-    filaOCR.push({
-      file, nome: file.name,
-      status: meta ? meta.status : 'pendente',
-      url: null, texto: null,
-      isImg: file.type.startsWith('image/')
-    });
-    novos++;
+    // Evita duplicatas por nome de arquivo OU por arquivo-origem de expansões anteriores
+    if (filaOCR.some(x => x.nome === file.name || x.origemArquivo === file.name)) continue;
+
+    const isImg = file.type.startsWith('image/');
+
+    if (!isImg) {
+      // Lê o texto imediatamente para detectar o formato multi-OC
+      const texto = await new Promise(resolve => {
+        const r = new FileReader();
+        r.onload = e => resolve(e.target.result || '');
+        r.onerror = () => resolve('');
+        r.readAsText(file, 'utf-8');
+      });
+
+      // Remove delimitadores de bloco Markdown (```json … ```) se presentes
+      const limpo = texto.replace(/^```[a-z]*\s*/i, '').replace(/```\s*$/, '').trim();
+      let parsed = null;
+      try { parsed = JSON.parse(limpo); } catch(e) {}
+
+      // Formato multi-OC: array de objetos com campos "OC" e "itens"
+      if (Array.isArray(parsed) && parsed.length && parsed[0] && parsed[0].OC && Array.isArray(parsed[0].itens)) {
+        for (const oc of parsed) {
+          const ocNome = String(oc.OC || '').trim();
+          for (let j = 0; j < (oc.itens || []).length; j++) {
+            const item = oc.itens[j];
+            const tipoPapel = parseTipoPapel(item['Tipo de Papel']);
+            const entryNome = `${ocNome} — ${item.Largura}×${item.Comprimento}mm`;
+            const meta = metaSalva.find(x => x.nome === entryNome);
+            const dados = {
+              oc: ocNome,
+              qtde: parseQtdeBR(item.Quantidade),
+              larg: parseInt(item.Largura, 10) || '',
+              compr: parseInt(item.Comprimento, 10) || '',
+              tipoPapelOriginal: item['Tipo de Papel'] || '',
+              ...(tipoPapel || {})
+            };
+            filaOCR.push({
+              file: null, nome: entryNome,
+              status: meta ? meta.status : 'pendente',
+              url: null, texto: null, isImg: false,
+              origemArquivo: file.name, dados
+            });
+            novos++;
+          }
+        }
+        continue; // arquivo JSON multi-OC expandido — não adiciona como entrada única
+      }
+
+      // Arquivo de texto simples: adiciona com texto já carregado
+      const meta = metaSalva.find(x => x.nome === file.name);
+      filaOCR.push({
+        file, nome: file.name,
+        status: meta ? meta.status : 'pendente',
+        url: null, texto, isImg: false
+      });
+      novos++;
+    } else {
+      // Imagem
+      const meta = metaSalva.find(x => x.nome === file.name);
+      filaOCR.push({
+        file, nome: file.name,
+        status: meta ? meta.status : 'pendente',
+        url: null, texto: null, isImg: true
+      });
+      novos++;
+    }
   }
+
   if (!novos && filaOCR.length === 0) return;
 
   filaMode = true;
@@ -1665,8 +1743,10 @@ async function mostraItemFila(idx) {
   const reg   = filaOCR.filter(x => x.status === 'registrado').length;
   const pul   = filaOCR.filter(x => x.status === 'pulado').length;
   const pend  = total - reg - pul;
+  const temExpansao = filaOCR.some(x => x.dados);
+  const rotulo = temExpansao ? 'item' : 'arq.';
   $('filaProgresso').innerHTML =
-    `<b>${total}</b> arq. — ` +
+    `<b>${total}</b> ${rotulo} — ` +
     `<span style="color:var(--ok)">✓ ${reg}</span> · ` +
     `<span>○ ${pend} pend.</span>` +
     (pul ? ` · <span style="color:var(--alerta)">— ${pul} pul.</span>` : '');
@@ -1708,6 +1788,20 @@ async function mostraItemFila(idx) {
   if (item.url) {
     prev.innerHTML = `<div style="text-align:center"><img src="${item.url}" alt="${item.nome}"
       style="max-width:100%;max-height:260px;border-radius:8px;border:1px solid var(--linha);object-fit:contain"></div>`;
+  } else if (item.dados) {
+    // Entrada expandida de JSON multi-OC — mostra resumo e preenche o formulário
+    const d = item.dados;
+    const prodLabel = d.produto && d.onda ? `${d.produto} onda ${d.onda}` : '';
+    const tipLabel  = d.tipoPapelOriginal && d.tipoPapelOriginal !== prodLabel ? ` <span style="color:var(--tinta2)">(${d.tipoPapelOriginal})</span>` : '';
+    const semProd   = !d.produto && d.tipoPapelOriginal
+      ? `<span style="color:var(--alerta)">⚠️ Produto não identificado: ${d.tipoPapelOriginal} — selecione manualmente.</span>` : '';
+    prev.innerHTML = `<div style="background:var(--papel);border:1px solid var(--linha);border-radius:8px;
+      padding:8px 12px;font-size:12.5px;line-height:2">
+      <b>OC:</b> ${d.oc} &nbsp;·&nbsp; <b>Qtde:</b> ${d.qtde} chapas<br>
+      <b>Largura:</b> ${d.larg} mm &nbsp;·&nbsp; <b>Comprimento:</b> ${d.compr} mm<br>
+      ${prodLabel ? `<b>Produto:</b> ${prodLabel}${tipLabel}` : semProd}
+    </div>`;
+    autoPreencheFila(item.dados);
   } else if (item.texto) {
     const trecho = item.texto.substring(0, 1800).replace(/</g, '&lt;');
     prev.innerHTML = `<pre style="background:var(--papel);border:1px solid var(--linha);border-radius:8px;
