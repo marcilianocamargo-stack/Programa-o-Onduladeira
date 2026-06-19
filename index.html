@@ -1219,7 +1219,7 @@ function exportaXLSX() {
           merges.push({ s:{ r:rCli, c:3 }, e:{ r:rCli, c:NCOLS-1 } });
           alturas[rCli] = { hpt: 30 };
         });
-aa
+
       } else if (ln.tipo === 'fora_header') {
         const r = addRow(['','','OFs QUE NAO CABEM NO TURNO — continuar no proximo dia'],
           () => ({ font:{ bold:true, color:{ rgb:C.forafg } }, fill:{ fgColor:{ rgb:C.forabg } }, border:b4 }));
