@@ -1627,17 +1627,29 @@ function adicionarFila() {
 }
 
 /* Interpreta "Tipo de Papel" do OCR → {produto, onda} compatível com o cadastro.
-   Exemplos: "P60-C" → P60|C · "P25-B" → P25|B · "P55-D onda BC" → P55D|D
-   "PO60-C" / "PO50-B" são leituras OCR de "P60-C" / "P50-B" (O confundido com 0). */
+   Exemplos: "P60-C"→P60|C · "P25B"→P25|B · "PW40B"→PW40|B · "P55-D onda BC"→P55D|D
+   "PO60-C"/"PO50-B" são leituras OCR de "P60-C"/"P50-B" (O confundido com 0).
+   Aceita com ou sem separador entre número e onda (P25B e P25-B são equivalentes). */
 function parseTipoPapel(tipo) {
   if (!tipo) return null;
   const t = tipo.trim();
-  if (/onda\s*BC/i.test(t)) {              // dupla: "P55-D onda BC"
-    const m = t.match(/P[O]?(\d+)/i);
-    if (m) return { produto: 'P' + m[1] + 'D', onda: 'D' };
+  // Dupla: "P55-D onda BC", "P70D onda BC"
+  if (/onda\s*BC/i.test(t)) {
+    const m = t.match(/P([A-Za-z]*)(\d+)/i);
+    if (m) {
+      let pref = m[1].toUpperCase();
+      if (pref === 'O') pref = '';         // "PO" é ruído OCR
+      return { produto: 'P' + pref + m[2] + 'D', onda: 'D' };
+    }
   }
-  const m = t.match(/P[O]?(\d+)[^\d]+([BC])\b/i);  // simples: "P60-C", "PO60-C"
-  if (m) return { produto: 'P' + m[1], onda: m[2].toUpperCase() };
+  // Simples: P + prefixo opcional (W, K, …) + dígitos + separador opcional + B ou C
+  // Cobre: "P25B", "P60-C", "PW40B", "PW40-B", "PK50B", "PO60-C"
+  const m = t.match(/P([A-Za-z]*)(\d+)[^0-9A-Za-z]*([BC])\b?/i);
+  if (m) {
+    let pref = m[1].toUpperCase();
+    if (pref === 'O') pref = '';           // "PO" é ruído OCR
+    return { produto: 'P' + pref + m[2], onda: m[3].toUpperCase() };
+  }
   return null;
 }
 
@@ -1710,6 +1722,37 @@ async function carregaFilaOCR(fileList) {
           }
         }
         continue; // arquivo JSON multi-OC expandido — não adiciona como entrada única
+      }
+
+      // Formato flat: array de itens sem agrupamento em "Itens" — cada objeto já é um item
+      // Ex: [{Cliente, OC, Quantidade, Largura, Comprimento, Vincos, "Tipo de Papel"}, …]
+      if (Array.isArray(parsed) && parsed.length && parsed[0] && parsed[0].OC && parsed[0].Quantidade) {
+        for (let j = 0; j < parsed.length; j++) {
+          const item = parsed[j];
+          const ocNome    = String(item.OC      || '').trim();
+          const ocCliente = String(item.Cliente || '').trim();
+          const tipoPapel = parseTipoPapel(item['Tipo de Papel']);
+          const entryNome = `${ocNome} — ${item.Largura}×${item.Comprimento}mm`;
+          const meta = metaSalva.find(x => x.nome === entryNome);
+          const dados = {
+            cliente: ocCliente,
+            oc: ocNome,
+            qtde: parseQtdeBR(item.Quantidade),
+            larg: parseInt(item.Largura, 10) || '',
+            compr: parseInt(item.Comprimento, 10) || '',
+            vinco: parseVinco(item.Vincos || item.vincos),
+            tipoPapelOriginal: item['Tipo de Papel'] || '',
+            ...(tipoPapel || {})
+          };
+          filaOCR.push({
+            file: null, nome: entryNome,
+            status: meta ? meta.status : 'pendente',
+            url: null, texto: null, isImg: false,
+            origemArquivo: file.name, dados
+          });
+          novos++;
+        }
+        continue; // arquivo JSON flat expandido — não adiciona como entrada única
       }
 
       // Arquivo de texto simples: adiciona com texto já carregado
