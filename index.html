@@ -1644,7 +1644,7 @@ function parseTipoPapel(tipo) {
   }
   // Simples: P + prefixo opcional (W, K, …) + dígitos + separador opcional + B ou C
   // Cobre: "P25B", "P60-C", "PW40B", "PW40-B", "PK50B", "PO60-C"
-  const m = t.match(/P([A-Za-z]*)(\d+)[^0-9A-Za-z]*([BC])\b?/i);
+  const m = t.match(/P([A-Za-z]*)(\d+)[^0-9A-Za-z]*([BC])/i);
   if (m) {
     let pref = m[1].toUpperCase();
     if (pref === 'O') pref = '';           // "PO" é ruído OCR
