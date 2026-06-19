@@ -134,6 +134,15 @@ details[open] summary::after{content:"–"}
 details .corpo{padding:10px 0}
 .nota{font-size:12.5px;color:var(--tinta2);margin-top:6px}
 
+/* Fila de importação OCR */
+.fila-chip{display:inline-flex;align-items:center;gap:4px;padding:4px 10px;cursor:pointer;
+  border-radius:20px;border:1.5px solid var(--linha);background:var(--papel);
+  font-size:12px;font-weight:600;white-space:nowrap;transition:all .15s;user-select:none}
+.fila-chip:hover{background:var(--kraft-claro)}
+.fila-chip.ativo{background:var(--kraft-claro);border-color:var(--kraft);color:var(--kraft)}
+.fila-chip.ok{border-color:#bcd9c6;background:var(--ok-bg);color:var(--ok)}
+.fila-chip.pul{border-color:#e8b3a8;background:var(--alerta-bg);color:var(--alerta);opacity:.75}
+
 @media print{
   header,.tabbar,.acoes,.of .ops,#paneNova,#paneTab{display:none!important}
   body{background:#fff;padding:0}
@@ -160,6 +169,7 @@ details .corpo{padding:10px 0}
     </div>
     <div id="listaProg"></div>
     <div class="acoes">
+      <button class="btn sec" onclick="abreInputFilaOCR()">Fila OCR</button>
       <button class="btn" onclick="exportaXLSX()">Exportar Excel</button>
       <button class="btn" onclick="pdfOperadores()">PDF Operadores</button>
       <button class="btn sec" onclick="window.print()">Imprimir</button>
@@ -169,6 +179,37 @@ details .corpo{padding:10px 0}
 
   <!-- NOVA OF -->
   <section class="pane" id="paneNova">
+
+    <!-- PAINEL DE FILA OCR -->
+    <div id="filaOCRPanel" style="display:none;margin-bottom:10px">
+      <div class="card" style="border-left:5px solid var(--kraft);padding:12px">
+        <!-- Cabeçalho: título + botões de controle -->
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:6px;flex-wrap:wrap">
+          <div>
+            <span style="font-family:'Barlow Condensed';font-size:16px;font-weight:700;text-transform:uppercase;letter-spacing:.04em">Fila OCR</span>
+            <span id="filaProgresso" style="font-size:12.5px;color:var(--tinta2);margin-left:10px"></span>
+          </div>
+          <div style="display:flex;gap:5px;flex-wrap:wrap">
+            <button type="button" class="btn mini sec" id="filaBtnAnterior" onclick="navFila(-1)">← Ant</button>
+            <button type="button" class="btn mini sec" id="filaBtnPular" onclick="pulaFila()">Pular</button>
+            <button type="button" class="btn mini sec" id="filaBtnDesmarcar" onclick="desmarcarFila()" style="display:none">↩ Reabrir</button>
+            <button type="button" class="btn mini sec" id="filaBtnProximo" onclick="navFila(1)">Próx →</button>
+            <button type="button" class="btn mini sec" onclick="adicionarFila()">+ Mais</button>
+            <button type="button" class="btn mini perigo" onclick="fechaFila()">✕ Fechar</button>
+          </div>
+        </div>
+        <!-- Arquivo atual + status -->
+        <div style="display:flex;align-items:center;gap:8px;margin-top:8px;flex-wrap:wrap">
+          <span id="filaStatusBadge" class="tag" style="display:none"></span>
+          <span id="filaArquivoNome" style="font-size:12.5px;color:var(--tinta2);word-break:break-all"></span>
+        </div>
+        <!-- Preview da imagem ou texto do OCR -->
+        <div id="filaPreview" style="margin-top:8px"></div>
+        <!-- Chips de arquivos da fila -->
+        <div id="filaLista" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px;max-height:88px;overflow-y:auto;padding:2px 0"></div>
+      </div>
+    </div>
+
     <form id="formOF" onsubmit="return salvaOF(event)">
       <div class="card">
         <input type="hidden" id="fEditId">
@@ -295,6 +336,7 @@ details .corpo{padding:10px 0}
       </div>
     </details>
   </section>
+  <input type="file" id="inputFilaOCR" multiple accept="image/*,.json,.txt" style="display:none" onchange="carregaFilaOCR(this.files)">
 </main>
 
 
@@ -745,7 +787,15 @@ function salvaOF(ev) {
     of.id = Date.now() + '-' + Math.random().toString(36).slice(2, 7);
     db.ofs.push(of);
   }
-  salva(); limpaForm(); trocaAba('prog');
+  salva();
+  if (filaMode && filaIdx >= 0 && filaIdx < filaOCR.length) {
+    filaOCR[filaIdx].status = 'registrado';
+    salvaFilaOCR();
+    limpaForm();
+    avancaFila();
+  } else {
+    limpaForm(); trocaAba('prog');
+  }
   return false;
 }
 
@@ -1169,7 +1219,7 @@ function exportaXLSX() {
           merges.push({ s:{ r:rCli, c:3 }, e:{ r:rCli, c:NCOLS-1 } });
           alturas[rCli] = { hpt: 30 };
         });
-
+aa
       } else if (ln.tipo === 'fora_header') {
         const r = addRow(['','','OFs QUE NAO CABEM NO TURNO — continuar no proximo dia'],
           () => ({ font:{ bold:true, color:{ rgb:C.forafg } }, fill:{ fgColor:{ rgb:C.forabg } }, border:b4 }));
@@ -1546,6 +1596,201 @@ function zeraTudo() {
   if (confirm('Apagar TODAS as OFs e restaurar as tabelas padrão?') && confirm('Tem certeza? Não dá para desfazer.')) {
     db = JSON.parse(JSON.stringify(SEED)); salva(); desenhaProg(); desenhaTabelas();
   }
+}
+
+/* ===== FILA DE IMPORTAÇÃO OCR =====
+   Carrega arquivos (imagens/texto/JSON do OCR) um a um para conferência antes do lançamento.
+   Status por arquivo: 'pendente' → 'registrado' | 'pulado'
+   Persistência: localStorage guarda nome+status; arquivos precisam ser recarregados se o app fechar. */
+
+const FILA_KEY2 = 'prime_fila_v2';
+let filaOCR = [];   // [{file, nome, status, url, texto, isImg}]
+let filaIdx  = -1;
+let filaMode = false;
+
+function salvaFilaOCR() {
+  try {
+    localStorage.setItem(FILA_KEY2, JSON.stringify(
+      filaOCR.map(f => ({ nome: f.nome, status: f.status }))
+    ));
+  } catch(e) {}
+}
+
+function abreInputFilaOCR() {
+  $('inputFilaOCR').value = '';
+  $('inputFilaOCR').click();
+}
+
+function adicionarFila() {
+  $('inputFilaOCR').value = '';
+  $('inputFilaOCR').click();
+}
+
+async function carregaFilaOCR(fileList) {
+  const metaSalva = (() => {
+    try { return JSON.parse(localStorage.getItem(FILA_KEY2)) || []; } catch(e) { return []; }
+  })();
+
+  let novos = 0;
+  for (const file of Array.from(fileList)) {
+    if (filaOCR.some(x => x.nome === file.name)) continue; // evita duplicatas
+    const meta = metaSalva.find(x => x.nome === file.name);
+    filaOCR.push({
+      file, nome: file.name,
+      status: meta ? meta.status : 'pendente',
+      url: null, texto: null,
+      isImg: file.type.startsWith('image/')
+    });
+    novos++;
+  }
+  if (!novos && filaOCR.length === 0) return;
+
+  filaMode = true;
+  $('filaOCRPanel').style.display = '';
+  salvaFilaOCR();
+
+  // Vai direto ao primeiro pendente
+  const primP = filaOCR.findIndex(x => x.status === 'pendente');
+  await mostraItemFila(primP >= 0 ? primP : 0);
+  trocaAba('nova');
+}
+
+async function mostraItemFila(idx) {
+  if (idx < 0 || idx >= filaOCR.length) return;
+  filaIdx = idx;
+  const item = filaOCR[idx];
+
+  // — Contadores de progresso —
+  const total = filaOCR.length;
+  const reg   = filaOCR.filter(x => x.status === 'registrado').length;
+  const pul   = filaOCR.filter(x => x.status === 'pulado').length;
+  const pend  = total - reg - pul;
+  $('filaProgresso').innerHTML =
+    `<b>${total}</b> arq. — ` +
+    `<span style="color:var(--ok)">✓ ${reg}</span> · ` +
+    `<span>○ ${pend} pend.</span>` +
+    (pul ? ` · <span style="color:var(--alerta)">— ${pul} pul.</span>` : '');
+
+  // — Arquivo atual e badge de status —
+  $('filaArquivoNome').textContent = item.nome;
+  const badge = $('filaStatusBadge');
+  if (item.status === 'pendente') {
+    badge.style.display = 'none';
+  } else {
+    badge.style.display = '';
+    badge.textContent = item.status === 'registrado' ? '✓ Registrada' : '— Pulada';
+    badge.className = 'tag ' + (item.status === 'registrado' ? 'col-ok' : 'col-ruim');
+  }
+
+  // — Botões de navegação —
+  $('filaBtnAnterior').disabled = idx <= 0;
+  $('filaBtnProximo').disabled  = idx >= total - 1;
+  $('filaBtnPular').style.display    = item.status === 'pendente' ? '' : 'none';
+  $('filaBtnDesmarcar').style.display = item.status !== 'pendente' ? '' : 'none';
+
+  // — Carrega o arquivo (lazy) se ainda não carregado —
+  if (!item.url && !item.texto && item.file) {
+    await new Promise(resolve => {
+      if (item.isImg) {
+        item.url = URL.createObjectURL(item.file);
+        resolve();
+      } else {
+        const r = new FileReader();
+        r.onload = e => { item.texto = e.target.result; resolve(); };
+        r.onerror = () => resolve();
+        r.readAsText(item.file, 'utf-8');
+      }
+    });
+  }
+
+  // — Preview —
+  const prev = $('filaPreview');
+  if (item.url) {
+    prev.innerHTML = `<div style="text-align:center"><img src="${item.url}" alt="${item.nome}"
+      style="max-width:100%;max-height:260px;border-radius:8px;border:1px solid var(--linha);object-fit:contain"></div>`;
+  } else if (item.texto) {
+    const trecho = item.texto.substring(0, 1800).replace(/</g, '&lt;');
+    prev.innerHTML = `<pre style="background:var(--papel);border:1px solid var(--linha);border-radius:8px;
+      padding:10px;font-size:11.5px;max-height:150px;overflow-y:auto;white-space:pre-wrap;word-break:break-word">${trecho}</pre>`;
+    // Tenta auto-preencher campos se o JSON tiver as chaves esperadas
+    try { autoPreencheFila(JSON.parse(item.texto)); } catch(e) {}
+  } else {
+    prev.innerHTML = `<p style="font-size:13px;color:var(--tinta2);margin-top:4px">📎 ${item.nome}</p>`;
+  }
+
+  // — Chips da fila (clicáveis para navegar) —
+  $('filaLista').innerHTML = filaOCR.map((f, i) => {
+    const ic  = { pendente:'○', registrado:'✓', pulado:'—' }[f.status] || '○';
+    const cls = ['fila-chip',
+      f.status === 'registrado' ? 'ok' : f.status === 'pulado' ? 'pul' : '',
+      i === idx ? 'ativo' : ''
+    ].filter(Boolean).join(' ');
+    const label = f.nome.replace(/\.[^.]+$/, '').substring(0, 20);
+    return `<span class="${cls}" onclick="mostraItemFila(${i})" title="${f.nome}">${ic} ${i+1}. ${label}</span>`;
+  }).join('');
+}
+
+/* Preenche o formulário da OF com dados vindos de um JSON exportado pelo OCR.
+   Chaves suportadas (todas opcionais): cliente, of, oc, qtde, larg, compr, vinco, data, produto, onda */
+function autoPreencheFila(dados) {
+  const mapa = { cliente:'fCliente', of:'fOF', oc:'fOC', qtde:'fQtde',
+                 larg:'fLarg', compr:'fCompr', vinco:'fVinco', data:'fData' };
+  let tocou = false;
+  Object.entries(mapa).forEach(([k, id]) => {
+    if (dados[k] != null && String(dados[k]).trim() !== '') { $(id).value = dados[k]; tocou = true; }
+  });
+  if (dados.produto && dados.onda) {
+    const val = dados.produto + '|' + dados.onda;
+    const opt = $('fProduto').querySelector(`option[value="${CSS.escape(val)}"]`);
+    if (opt) { $('fProduto').value = val; aoMudarProduto(); }
+  }
+  if (tocou) recalcula();
+}
+
+function navFila(delta) {
+  const idx = filaIdx + delta;
+  if (idx >= 0 && idx < filaOCR.length) mostraItemFila(idx);
+}
+
+function pulaFila() {
+  if (filaIdx < 0 || filaIdx >= filaOCR.length) return;
+  filaOCR[filaIdx].status = 'pulado';
+  salvaFilaOCR();
+  avancaFila();
+}
+
+function desmarcarFila() {
+  if (filaIdx < 0 || filaIdx >= filaOCR.length) return;
+  filaOCR[filaIdx].status = 'pendente';
+  salvaFilaOCR();
+  mostraItemFila(filaIdx);
+}
+
+function avancaFila() {
+  // Próximo pendente após o atual
+  for (let i = filaIdx + 1; i < filaOCR.length; i++) {
+    if (filaOCR[i].status === 'pendente') { limpaForm(); mostraItemFila(i); return; }
+  }
+  // Volta do início caso tenha pendente antes (lote não-sequencial)
+  for (let i = 0; i < filaIdx; i++) {
+    if (filaOCR[i].status === 'pendente') { limpaForm(); mostraItemFila(i); return; }
+  }
+  // Nenhum pendente restante → fila concluída
+  const reg = filaOCR.filter(x => x.status === 'registrado').length;
+  const pul = filaOCR.filter(x => x.status === 'pulado').length;
+  mostraItemFila(filaIdx);
+  const msg = `Fila concluída!\n\n✓ ${reg} OF${reg !== 1 ? 's' : ''} registrada${reg !== 1 ? 's' : ''}` +
+    (pul ? `\n— ${pul} arquivo${pul !== 1 ? 's' : ''} pulado${pul !== 1 ? 's' : ''}` : '') +
+    `\n\nIr para Programação?`;
+  if (confirm(msg)) { fechaFila(); trocaAba('prog'); }
+}
+
+function fechaFila() {
+  filaMode = false;
+  $('filaOCRPanel').style.display = 'none';
+  filaOCR.forEach(f => { if (f.url) URL.revokeObjectURL(f.url); });
+  filaOCR = []; filaIdx = -1;
+  try { localStorage.removeItem(FILA_KEY2); } catch(e) {}
 }
 
 /* ---------- início ---------- */
