@@ -1646,6 +1646,12 @@ function parseQtdeBR(s) {
   return parseInt(String(s || '').replace(/\./g, '').replace(/,/g, ''), 10) || 0;
 }
 
+/* Normaliza vinco do OCR: "Sem vinco" / "sem vinco" → "x"; demais passam direto. */
+function parseVinco(s) {
+  if (!s) return 'x';
+  return /sem\s*vinco/i.test(s.trim()) ? 'x' : s.trim();
+}
+
 async function carregaFilaOCR(fileList) {
   const metaSalva = (() => {
     try { return JSON.parse(localStorage.getItem(FILA_KEY2)) || []; } catch(e) { return []; }
@@ -1672,20 +1678,25 @@ async function carregaFilaOCR(fileList) {
       let parsed = null;
       try { parsed = JSON.parse(limpo); } catch(e) {}
 
-      // Formato multi-OC: array de objetos com campos "OC" e "itens"
-      if (Array.isArray(parsed) && parsed.length && parsed[0] && parsed[0].OC && Array.isArray(parsed[0].itens)) {
+      // Formato multi-OC: array de objetos com campos "OC" e "Itens" (ou "itens")
+      if (Array.isArray(parsed) && parsed.length && parsed[0] && parsed[0].OC &&
+          Array.isArray(parsed[0].Itens || parsed[0].itens)) {
         for (const oc of parsed) {
-          const ocNome = String(oc.OC || '').trim();
-          for (let j = 0; j < (oc.itens || []).length; j++) {
-            const item = oc.itens[j];
+          const ocNome    = String(oc.OC       || '').trim();
+          const ocCliente = String(oc.Cliente  || '').trim();
+          const ocItens   = oc.Itens || oc.itens || [];
+          for (let j = 0; j < ocItens.length; j++) {
+            const item = ocItens[j];
             const tipoPapel = parseTipoPapel(item['Tipo de Papel']);
             const entryNome = `${ocNome} — ${item.Largura}×${item.Comprimento}mm`;
             const meta = metaSalva.find(x => x.nome === entryNome);
             const dados = {
+              cliente: ocCliente,
               oc: ocNome,
               qtde: parseQtdeBR(item.Quantidade),
               larg: parseInt(item.Largura, 10) || '',
               compr: parseInt(item.Comprimento, 10) || '',
+              vinco: parseVinco(item.Vincos || item.vincos),
               tipoPapelOriginal: item['Tipo de Papel'] || '',
               ...(tipoPapel || {})
             };
@@ -1797,8 +1808,10 @@ async function mostraItemFila(idx) {
       ? `<span style="color:var(--alerta)">⚠️ Produto não identificado: ${d.tipoPapelOriginal} — selecione manualmente.</span>` : '';
     prev.innerHTML = `<div style="background:var(--papel);border:1px solid var(--linha);border-radius:8px;
       padding:8px 12px;font-size:12.5px;line-height:2">
+      ${d.cliente ? `<b>Cliente:</b> ${d.cliente}<br>` : ''}
       <b>OC:</b> ${d.oc} &nbsp;·&nbsp; <b>Qtde:</b> ${d.qtde} chapas<br>
       <b>Largura:</b> ${d.larg} mm &nbsp;·&nbsp; <b>Comprimento:</b> ${d.compr} mm<br>
+      <b>Vinco:</b> ${d.vinco === 'x' ? 'Liso (sem vinco)' : d.vinco}<br>
       ${prodLabel ? `<b>Produto:</b> ${prodLabel}${tipLabel}` : semProd}
     </div>`;
     autoPreencheFila(item.dados);
