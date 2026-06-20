@@ -171,7 +171,7 @@ details .corpo{padding:10px 0}
     <div class="acoes">
       <button class="btn sec" onclick="abreInputFilaOCR()">Fila OCR</button>
       <button class="btn" onclick="exportaXLSX()">Exportar Excel</button>
-      <button class="btn" onclick="pdfOperadores()">PDF Operadores</button>
+      <button class="btn" onclick="xlsxOperadores()">Excel Operadores</button>
       <button class="btn sec" onclick="window.print()">Imprimir</button>
       <button class="btn perigo" onclick="limpaOFs()">Limpar programação</button>
     </div>
@@ -1374,44 +1374,119 @@ function exportaXLSX() {
     navigator.share({ files: [file], title: nome }).catch(() => baixa(blob, nome));
   } else baixa(blob, nome);
 }
-/* PDF para os operadores: só o essencial, letra grande, uma página por dia */
-function pdfOperadores() {
+/* Excel para os operadores: P&B, agrupado por cliente, uma aba por dia, paisagem A4 */
+function xlsxOperadores() {
   const ativos = db.ofs.filter(o => !o.cancelada);
-  if (!ativos.length) { alert('Não há OFs ativas para gerar o PDF.'); return; }
-  if (!window.jspdf) { alert('Sem internet para carregar o gerador de PDF. Conecte e tente de novo.'); return; }
-  const { jsPDF } = window.jspdf;
-  const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+  if (!ativos.length) { alert('Não há OFs ativas para gerar o Excel.'); return; }
+
+  const wb = XLSX.utils.book_new();
   const dias = {};
   ativos.forEach(o => { (dias[o.data] = dias[o.data] || []).push(o); });
-  const chavesDia = Object.keys(dias).sort();
-  chavesDia.forEach((dia, di) => {
-    if (di > 0) doc.addPage();
-    doc.setFont('helvetica', 'bold'); doc.setFontSize(17);
-    doc.text('ONDULADEIRA — PROGRAMAÇÃO DE ' + dataBR(dia), 14, 14);
-    const corpo = dias[dia].slice().sort(cmpProg).map((o, i) => {
-      const pal = (o.palQtde ? o.palQtde + ' palete' + (o.palQtde > 1 ? 's' : '') : '—') +
-        (o.palMed ? '\n' + (o.palMed === 'Padrão' ? 'padrão 1,10 / 1,00' : o.palMed + ' mm') : '');
-      return [i + 1, o.cliente, 'OF ' + o.of + '\n' + poCodigo(o),
-        o.bobina + ' mm\n' + (o.papeis || []).join(' / '),
-        o.larg + ' × ' + o.compr + '\nvinco ' + o.vinco,
-        fmt0(o.qtde), o.arranjo + '×', pal];
+
+  const brdT = { style:'thin',   color:{ rgb:'000000' } };
+  const brdM = { style:'medium', color:{ rgb:'000000' } };
+  const b4   = { top:brdT, bottom:brdT, left:brdT, right:brdT };
+  const b4m  = { top:brdM, bottom:brdM, left:brdM, right:brdM };
+  const NCOLS = 8;
+  const HEAD = ['#', 'OF', 'Produto', 'Chapas', 'Medidas', 'Bobina / Papéis', 'Arr.', 'Paletes'];
+
+  Object.keys(dias).sort().forEach(dia => {
+    const ofsDay = dias[dia].slice();
+    if (!ofsDay.length) return;
+
+    ofsDay.sort((a, b) => {
+      const cc = a.cliente.localeCompare(b.cliente);
+      if (cc !== 0) return cc;
+      const oa = ordemOnda[a.onda] ?? 9, ob = ordemOnda[b.onda] ?? 9;
+      if (oa !== ob) return oa - ob;
+      return (b.bobina - a.bobina) || (+a.of - +b.of);
     });
-    doc.autoTable({
-      startY: 19,
-      head: [['#', 'Cliente', 'OF / Produto', 'Bobina / Papéis', 'Medida (mm)', 'Chapas', 'Arr.', 'Paletes']],
-      body: corpo,
-      styles: { fontSize: 11.5, cellPadding: 2.6, valign: 'middle', lineColor: [120, 130, 140], lineWidth: 0.2 },
-      headStyles: { fillColor: [15, 30, 46], fontSize: 11, halign: 'left' },
-      columnStyles: { 0: { cellWidth: 9 }, 1: { cellWidth: 52, fontStyle: 'bold' }, 5: { halign: 'right', fontStyle: 'bold' }, 6: { cellWidth: 13 } },
-      didDrawPage: () => {
-        doc.setFontSize(8.5); doc.setFont('helvetica', 'normal');
-        doc.text('Prime Ondulados — gerado em ' + new Date().toLocaleString('pt-BR'), 14, doc.internal.pageSize.getHeight() - 6);
+
+    const aoa = [], estilos = {}, merges = [], rowH = [];
+    let seq = 0;
+
+    function addRow(cells, styleFn, hpt) {
+      while (cells.length < NCOLS) cells.push('');
+      const r = aoa.length;
+      aoa.push(cells);
+      rowH.push(hpt ? { hpt } : null);
+      for (let ci = 0; ci < NCOLS; ci++) {
+        const ref = XLSX.utils.encode_cell({ r, c: ci });
+        estilos[ref] = styleFn(ci);
       }
+      return r;
+    }
+
+    // Título do dia — fundo preto, texto branco
+    const rDay = addRow(['ONDULADEIRA — PROGRAMAÇÃO DE ' + dataBR(dia)],
+      () => ({ font:{ bold:true, sz:16, color:{ rgb:'FFFFFF' } },
+               fill:{ fgColor:{ rgb:'000000' } },
+               alignment:{ horizontal:'center', vertical:'center' } }), 28);
+    merges.push({ s:{ r:rDay, c:0 }, e:{ r:rDay, c:NCOLS-1 } });
+
+    // Cabeçalho de colunas — branco com borda grossa preta
+    addRow([...HEAD], ci => ({
+      font:{ bold:true, sz:12, color:{ rgb:'000000' } },
+      fill:{ fgColor:{ rgb:'FFFFFF' } }, border:b4m,
+      alignment:{ horizontal:'center', wrapText:true, vertical:'center' }
+    }), 22);
+
+    const cliOrder = [], cliMap = {};
+    ofsDay.forEach(o => {
+      if (!cliMap[o.cliente]) { cliOrder.push(o.cliente); cliMap[o.cliente] = []; }
+      cliMap[o.cliente].push(o);
     });
+
+    cliOrder.forEach(cli => {
+      // Cabeçalho do cliente — cinza claro
+      const rCli = addRow(['Programação — ' + cli],
+        () => ({ font:{ bold:true, sz:13, color:{ rgb:'000000' } },
+                 fill:{ fgColor:{ rgb:'CCCCCC' } }, border:b4,
+                 alignment:{ horizontal:'left', vertical:'center' } }), 20);
+      merges.push({ s:{ r:rCli, c:0 }, e:{ r:rCli, c:NCOLS-1 } });
+
+      cliMap[cli].forEach(o => {
+        seq++;
+        const medVinco = o.larg + ' × ' + o.compr + ' mm\nV ' + (o.vinco || 'x');
+        const bobPap   = o.bobina + ' mm\n' + (o.papeis || []).join(' / ');
+        const palStr   = (o.palQtde ? o.palQtde + ' paletes' : '—') +
+                         (o.palMed ? '\n' + o.palMed : '');
+        addRow([
+          seq, +o.of, poCodigo(o), o.qtde,
+          medVinco, bobPap,
+          o.arranjo + '×',
+          palStr
+        ], ci => ({
+          font:{ sz:13, bold: ci === 3 },
+          fill:{ fgColor:{ rgb:'FFFFFF' } }, border:b4,
+          alignment:{
+            horizontal:(ci===0||ci===1||ci===3||ci===6)?'center':'left',
+            vertical:'top',
+            wrapText: ci===4||ci===5||ci===7
+          }
+        }), 36);
+      });
+    });
+
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+    Object.entries(estilos).forEach(([ref, s]) => { if (ws[ref]) ws[ref].s = s; });
+    ws['!cols'] = [
+      {wch:4},{wch:7},{wch:9},{wch:8},
+      {wch:17},{wch:30},{wch:6},{wch:22}
+    ];
+    ws['!merges'] = merges;
+    ws['!rows'] = rowH;
+    ws['!pageSetup'] = { paperSize:9, orientation:'landscape',
+                         fitToPage:true, fitToWidth:1, fitToHeight:1 };
+    ws['!margins'] = { left:0.4, right:0.4, top:0.6, bottom:0.6, header:0.2, footer:0.2 };
+
+    XLSX.utils.book_append_sheet(wb, ws, dataBR(dia).replace(/\//g, '-'));
   });
-  const nome = 'Operadores_' + (chavesDia[0] || '') + '.pdf';
-  const blob = doc.output('blob');
-  const file = new File([blob], nome, { type: 'application/pdf' });
+
+  const nome = 'Operadores_' + new Date().toISOString().slice(0, 10) + '.xlsx';
+  const dados = XLSX.write(wb, { bookType:'xlsx', type:'array' });
+  const blob = new Blob([dados], { type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+  const file = new File([blob], nome, { type: blob.type });
   if (navigator.canShare && navigator.canShare({ files: [file] })) {
     navigator.share({ files: [file], title: nome }).catch(() => baixa(blob, nome));
   } else baixa(blob, nome);
