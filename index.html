@@ -392,7 +392,7 @@ const SEED = {
   /* tipo: S = onda simples (capa, miolo, interna)  D = dupla (CE, mioloC, intermediária, mioloB, CI)
      colMin em kgf/cm; gramB/gramC = gramatura nominal de venda (tabela de especificação) */
   produtos: [
-    { cod: 'P25',  tipo: 'S', ondas: ['B', 'C'], colMin: 2.5, gramB: 315, gramC: 324, rec: ['TLQ95', 'TLQ95', 'TLQ95'] },
+    { cod: 'P25',  tipo: 'S', ondas: ['B', 'C'], colMin: 2.5, gramB: 315, gramC: 324, rec: ['TPQ100', 'TPQ100', 'TPQ100'] },
     { cod: 'P30',  tipo: 'S', ondas: ['B', 'C'], colMin: 3.0, gramB: 330, gramC: 340, rec: ['TLQ95', 'TLQ95', 'TLQ95'] },
     { cod: 'P35',  tipo: 'S', ondas: ['B', 'C'], colMin: 3.5, gramB: 345, gramC: 354, rec: ['TLQ110', 'TLQ95', 'TLQ95'] },
     { cod: 'P40',  tipo: 'S', ondas: ['B', 'C'], colMin: 4.0, gramB: 355, gramC: 365, rec: ['TLQ110', 'TLQ95', 'TLQ110'] },
@@ -438,6 +438,11 @@ function carrega() {
   if (db.v < 3) {  // migração: cálculo de paletes
     db.params.palete = JSON.parse(JSON.stringify(SEED.params.palete));
     db.v = 3;
+  }
+  if (db.v < 4) {  // migração: receita P25 → TPQ100
+    const _p25 = db.produtos.find(p => p.cod === 'P25');
+    if (_p25) _p25.rec = ['TPQ100', 'TPQ100', 'TPQ100'];
+    db.v = 4;
   }
   salva();
 }
@@ -840,14 +845,15 @@ function excluiOF(id) {
 }
 
 /* ---------- programação ---------- */
-const ordemOnda = { D: 0, B: 1, C: 2 };
-/* dentro do dia: cliente → tipo de onda (D/BC → B → C) → bobina maior primeiro → nº da OF */
+const ordemOnda = { D: 0, C: 1, B: 2 };
+/* dentro do dia: tipo de onda (D/BC → C → B) → bobina maior primeiro → cliente → nº da OF */
 function cmpProg(a, b) {
-  const cc = a.cliente.localeCompare(b.cliente);
-  if (cc !== 0) return cc;
   const oa = ordemOnda[a.onda] ?? 9, ob = ordemOnda[b.onda] ?? 9;
   if (oa !== ob) return oa - ob;
-  return (b.bobina - a.bobina) || (+a.of - +b.of);
+  if (b.bobina !== a.bobina) return b.bobina - a.bobina;
+  const cc = a.cliente.localeCompare(b.cliente);
+  if (cc !== 0) return cc;
+  return +a.of - +b.of;
 }
 function desenhaProg() {
   const cont = $('listaProg');
@@ -863,7 +869,7 @@ function desenhaProg() {
   const dias = {};
   db.ofs.forEach(o => { (dias[o.data] = dias[o.data] || []).push(o); });
   let html = '';
-  let totKg = 0, totMin = 0, refs = [];
+  let totKg = 0, totMin = 0, refs = [], totProdMin = 0, totSetupMin = 0;
   const cmpView = sortProgView === 'of'
     ? (a, b) => +a.of - +b.of
     : cmpProg;
@@ -893,14 +899,20 @@ function desenhaProg() {
         '<button data-copy="' + o.id + '" onclick="copiaLinhaOF(\'' + o.id + '\')">Copiar</button>' +
         '<button class="del" onclick="excluiOF(\'' + o.id + '\')">Excluir</button></div></div>';
     });
-    totKg += dKg; totMin += dMin;
-    html += '<div class="dia"><h2>' + dataBR(dia) + '<small>' + fmt(dKg, 0) + ' kg · ' +
-      fmt(dMin / 60, 1) + ' h</small></h2>' + cards + '</div>';
+    const simD = simulaDia(dias[dia]);
+    const tlD = simD && simD.linhas.find(l => l.tipo === 'total');
+    const dProd = tlD ? tlD.prodMin : dMin;
+    const dSetup = tlD ? tlD.paradaMin : 0;
+    totKg += dKg; totMin += dMin; totProdMin += dProd; totSetupMin += dSetup;
+    html += '<div class="dia"><h2>' + dataBR(dia) + '<small>' + fmt(dKg, 0) + ' kg' +
+      ' · prod. ' + fmt(dProd / 60, 1) + ' h · setup ' + fmt(dSetup, 0) + ' min · total ' + fmt((dProd + dSetup) / 60, 1) + ' h</small></h2>' + cards + '</div>';
   });
   const refMed = refs.length ? refs.reduce((a, b) => a + b, 0) / refs.length : null;
   html += '<div class="totais">' +
     '<div><b>' + fmt(totKg, 0) + '</b><span>kg no período</span></div>' +
-    '<div><b>' + fmt(totMin / 60, 1) + ' h</b><span>tempo de máquina</span></div>' +
+    '<div><b>' + fmt(totProdMin / 60, 1) + ' h</b><span>prod. pedidos</span></div>' +
+    '<div><b>' + fmt(totSetupMin, 0) + ' min</b><span>setup / trocas</span></div>' +
+    '<div><b>' + fmt((totProdMin + totSetupMin) / 60, 1) + ' h</b><span>tempo de máquina</span></div>' +
     '<div><b>' + (refMed == null ? '—' : fmt(refMed * 100, 1) + '%') + '</b><span>refile médio</span></div>' +
     '<div><b>' + db.ofs.filter(o => !o.cancelada).length + '</b><span>OFs ativas</span></div></div>';
   cont.innerHTML = html;
@@ -920,14 +932,14 @@ const TURNO_MIN = 480;        // 8 h × 60 min
 const PESO_BOBINA_KG = 1000;  // kg por bobina física
 
 function sortOFsDia(ofs) {
-  // 1. Cliente  2. Tipo de onda (D=dupla/BC → B → C)  3. Bobina maior → menor  4. Vinco (menos trocas)
-  const ondaOrd = { D: 0, B: 1, C: 2 };
+  // 1. Tipo de onda (D=dupla/BC → C → B)  2. Bobina maior → menor  3. Cliente  4. Vinco (menos trocas)
+  const ondaOrd = { D: 0, C: 1, B: 2 };
   return ofs.slice().sort((a, b) => {
-    const cc = a.cliente.localeCompare(b.cliente);
-    if (cc !== 0) return cc;
     const oa = ondaOrd[a.onda] ?? 9, ob = ondaOrd[b.onda] ?? 9;
     if (oa !== ob) return oa - ob;
     if (b.bobina !== a.bobina) return b.bobina - a.bobina;
+    const cc = a.cliente.localeCompare(b.cliente);
+    if (cc !== 0) return cc;
     if (a.vinco !== b.vinco) return a.vinco.localeCompare(b.vinco);
     return +a.of - +b.of;
   });
@@ -967,7 +979,7 @@ function simularOF(mlOf, mpr, reelAtual, np) {
       const ranOut = [];
       for (let i = 0; i < np; i++) { reel[i] -= minR; if (reel[i] <= 1e-6) ranOut.push(i); }
       const nChange = ranOut.length;
-      const tChange = nChange >= np ? 20 : nChange * 7;
+      const tChange = nChange >= 3 ? 20 : nChange * 7;
       paradaMin += tChange;
       reelChanges.push({ n: nChange, t: tChange });
       ranOut.forEach(i => { reel[i] = mpr[i]; });
@@ -1192,8 +1204,8 @@ function exportaXLSX() {
           'Paradas consideradas: troca de formato de bobina (conjunto completo) = 20 min; ' +
           'ajuste de facas e sliters entre pedidos com mudanca de vinco = 20 min; ' +
           'troca de pedido sem mudanca de vinco (ajuste de facas) = 2 min; ' +
-          'trocas fisicas de bobina de papel durante o pedido = 7 min por posicao (ou 20 min quando todas esgotam juntas). ' +
-          'Pedidos sequenciados por formato de bobina (maior para menor) e agrupados por tipo de onda (B, C ou dupla BC).';
+          'trocas fisicas de bobina de papel durante o pedido: 7 min por bobina individual; 3 ou mais bobinas simultaneas (conjunto completo) = 20 min. ' +
+          'Pedidos sequenciados por tipo de onda (dupla BC primeiro, depois onda C, depois onda B) e por formato de bobina dentro de cada tipo (maior para menor).';
         const rNota = addRow(['', '', nota],
           c => ({ font:{ italic:true, sz:9, color:{ rgb:'444444' } },
                   fill:{ fgColor:{ rgb:'F0F4F8' } }, border:b4,
@@ -1258,7 +1270,6 @@ function exportaXLSX() {
   ws['!merges'] = merges;
 
   const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, 'programacao');
 
   // ── Segunda aba: tabela limpa (padrão Prime — mesmo formato ABAPEL.xlsx) ──
   const HEAD2 = [
