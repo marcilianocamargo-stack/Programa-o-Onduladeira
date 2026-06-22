@@ -1387,8 +1387,8 @@ function xlsxOperadores() {
   const brdM = { style:'medium', color:{ rgb:'000000' } };
   const b4   = { top:brdT, bottom:brdT, left:brdT, right:brdT };
   const b4m  = { top:brdM, bottom:brdM, left:brdM, right:brdM };
-  const NCOLS = 8;
-  const HEAD = ['#', 'OF', 'Produto', 'Chapas', 'Medidas', 'Bobina / Papéis', 'Arr.', 'Paletes'];
+  const NCOLS = 9;
+  const HEAD = ['#', 'OF', 'Produto', 'Chapas', 'Medidas', 'V', 'Bobina / Papéis', 'Arr.', 'Paletes'];
 
   Object.keys(dias).sort().forEach(dia => {
     const ofsDay = dias[dia].slice();
@@ -1447,22 +1447,23 @@ function xlsxOperadores() {
 
       cliMap[cli].forEach(o => {
         seq++;
-        const medVinco = o.larg + ' × ' + o.compr + ' mm\nV ' + (o.vinco || 'x');
-        const bobPap   = o.bobina + ' mm\n' + (o.papeis || []).join(' / ');
-        const palStr   = (o.palQtde ? o.palQtde + ' paletes' : '—') +
-                         (o.palMed ? '\n' + o.palMed : '');
+        const medidas = o.larg + ' × ' + o.compr + ' mm';
+        const vinco   = o.vinco || 'x';
+        const bobPap  = o.bobina + ' mm\n' + (o.papeis || []).join(' / ');
+        const palStr  = (o.palQtde ? o.palQtde + ' paletes' : '—') +
+                        (o.palMed ? '\n' + o.palMed : '');
         addRow([
           seq, +o.of, poCodigo(o), o.qtde,
-          medVinco, bobPap,
+          medidas, vinco, bobPap,
           o.arranjo + '×',
           palStr
         ], ci => ({
           font:{ sz:13, bold: ci === 3 },
           fill:{ fgColor:{ rgb:'FFFFFF' } }, border:b4,
           alignment:{
-            horizontal:(ci===0||ci===1||ci===3||ci===6)?'center':'left',
+            horizontal:(ci===0||ci===1||ci===3||ci===5||ci===7)?'center':'left',
             vertical:'top',
-            wrapText: ci===4||ci===5||ci===7
+            wrapText: ci===6||ci===8
           }
         }), 36);
       });
@@ -1472,7 +1473,7 @@ function xlsxOperadores() {
     Object.entries(estilos).forEach(([ref, s]) => { if (ws[ref]) ws[ref].s = s; });
     ws['!cols'] = [
       {wch:4},{wch:7},{wch:9},{wch:8},
-      {wch:17},{wch:30},{wch:6},{wch:22}
+      {wch:15},{wch:14},{wch:28},{wch:6},{wch:20}
     ];
     ws['!merges'] = merges;
     ws['!rows'] = rowH;
@@ -1965,7 +1966,14 @@ async function mostraItemFila(idx) {
       f.status === 'registrado' ? 'ok' : f.status === 'pulado' ? 'pul' : '',
       i === idx ? 'ativo' : ''
     ].filter(Boolean).join(' ');
-    const label = f.nome.replace(/\.[^.]+$/, '').substring(0, 20);
+    let label;
+    if (f.dados) {
+      const qtde = f.dados.qtde != null ? f.dados.qtde : '—';
+      const tipo = f.dados.tipoPapelOriginal || '';
+      label = qtde + (tipo ? ' · ' + tipo : '');
+    } else {
+      label = f.nome.replace(/\.[^.]+$/, '').substring(0, 20);
+    }
     return `<span class="${cls}" onclick="mostraItemFila(${i})" title="${f.nome}">${ic} ${i+1}. ${label}</span>`;
   }).join('');
 }
