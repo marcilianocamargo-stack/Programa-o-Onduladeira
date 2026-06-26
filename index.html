@@ -170,7 +170,8 @@ details .corpo{padding:10px 0}
     <div id="listaProg"></div>
     <div class="acoes">
       <button class="btn sec" onclick="abreInputFilaOCR()">Fila OCR</button>
-      <button class="btn" onclick="exportaXLSX()">Exportar Excel</button>
+      <button class="btn" onclick="exportaXLSX()">Excel por Bobina</button>
+      <button class="btn" onclick="exportaXLSXporOC()">Excel por OC</button>
       <button class="btn" onclick="xlsxOperadores()">Excel Operadores</button>
       <button class="btn sec" onclick="window.print()">Imprimir</button>
       <button class="btn perigo" onclick="limpaOFs()">Limpar programação</button>
@@ -214,7 +215,7 @@ details .corpo{padding:10px 0}
       <div class="card">
         <input type="hidden" id="fEditId">
         <div class="row">
-          <div><label>Data de produção</label><input type="date" id="fData" required></div>
+          <div><label>Data do pedido</label><input type="date" id="fData" required></div>
           <div><label>Nº da OF</label><input type="number" id="fOF" inputmode="numeric" required></div>
           <div><label>OC (ordem de compra)</label><input id="fOC" autocomplete="off" placeholder="—"></div>
         </div>
@@ -949,6 +950,18 @@ function sortOFsDia(ofs) {
   });
 }
 
+function sortOFsDiaPorOC(ofs) {
+  // OFs com OC: ordem numérica crescente de OC  |  sem OC: data do pedido → nº OF
+  return ofs.slice().sort((a, b) => {
+    const aOC = (a.oc || '').trim();
+    const bOC = (b.oc || '').trim();
+    if (aOC && bOC) return aOC.localeCompare(bOC, 'pt-BR', { numeric: true });
+    if (aOC) return -1;
+    if (bOC) return 1;
+    return a.data.localeCompare(b.data) || +a.of - +b.of;
+  });
+}
+
 function mprOF(of) {
   // metros-de-chapa que cada rolo físico aguenta por posição de papel
   const p = produto(of.produto);
@@ -992,11 +1005,11 @@ function simularOF(mlOf, mpr, reelAtual, np) {
   return { prodMin, paradaMin, reelChanges, reelFinal: reel };
 }
 
-function simulaDia(ofsDodia) {
+function simulaDia(ofsDodia, sortFn) {
   const ativos = ofsDodia.filter(o => !o.cancelada);
   if (!ativos.length) return null;
 
-  const sorted = sortOFsDia(ativos);
+  const sorted = (sortFn || sortOFsDia)(ativos);
   const linhas = [];
   let prevOF = null, reelAtual = null, currentBobina = null;
   let acumMin = 0, acumKg = 0;
@@ -1072,6 +1085,26 @@ function simulaDia(ofsDodia) {
 
 /* ---------- exportação Excel (programação diária com simulação) ---------- */
 function exportaXLSX() {
+  _exportaXLSX({
+    titulo: 'PROGRAMAÇÃO ONDULADEIRA — PRIME',
+    arquivo: 'Programacao_Prime_',
+    aba1: 'programacao', aba2: 'tabela_limpa',
+    sortFn: null,
+    notaOrdem: 'Pedidos sequenciados por tipo de onda (dupla BC primeiro, depois onda C, depois onda B) e por formato de bobina dentro de cada tipo (maior para menor).'
+  });
+}
+
+function exportaXLSXporOC() {
+  _exportaXLSX({
+    titulo: 'PROGRAMAÇÃO ONDULADEIRA — POR OC',
+    arquivo: 'Programacao_Prime_PorOC_',
+    aba1: 'prog_por_OC', aba2: 'tabela_por_OC',
+    sortFn: sortOFsDiaPorOC,
+    notaOrdem: 'Pedidos sequenciados por Ordem de Compra (OC) — numerico crescente. OFs sem OC ordenadas pela data do pedido (mais antiga primeiro).'
+  });
+}
+
+function _exportaXLSX(opcoes) {
   if (!db.ofs.length) { alert('Não há OFs para exportar.'); return; }
 
   const porDia = {};
@@ -1106,7 +1139,7 @@ function exportaXLSX() {
   }
 
   // Título
-  const rTit = addRow(['PROGRAMAÇÃO ONDULADEIRA — PRIME · Gerado em ' + new Date().toLocaleString('pt-BR')],
+  const rTit = addRow([opcoes.titulo + ' · Gerado em ' + new Date().toLocaleString('pt-BR')],
     () => ({ font: { bold: true, sz: 13, color: { rgb: C.hbg } } }));
   merges.push({ s:{ r:rTit, c:0 }, e:{ r:rTit, c:NCOLS-1 } });
 
@@ -1121,7 +1154,7 @@ function exportaXLSX() {
   let seq = 0;
 
   Object.keys(porDia).sort().forEach(dia => {
-    const sim = simulaDia(porDia[dia]);
+    const sim = simulaDia(porDia[dia], opcoes.sortFn);
     if (!sim) return;
 
     // --- Resumo por cliente ---
@@ -1209,7 +1242,7 @@ function exportaXLSX() {
           'ajuste de facas e sliters entre pedidos com mudanca de vinco = 20 min; ' +
           'troca de pedido sem mudanca de vinco (ajuste de facas) = 2 min; ' +
           'trocas fisicas de bobina de papel durante o pedido: 7 min por bobina individual; 3 ou mais bobinas simultaneas (conjunto completo) = 20 min. ' +
-          'Pedidos sequenciados por tipo de onda (dupla BC primeiro, depois onda C, depois onda B) e por formato de bobina dentro de cada tipo (maior para menor).';
+          opcoes.notaOrdem;
         const rNota = addRow(['', '', nota],
           c => ({ font:{ italic:true, sz:9, color:{ rgb:'444444' } },
                   fill:{ fgColor:{ rgb:'F0F4F8' } }, border:b4,
@@ -1274,10 +1307,11 @@ function exportaXLSX() {
   ws['!merges'] = merges;
 
   const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, opcoes.aba1);
 
   // ── Segunda aba: tabela limpa (padrão Prime — mesmo formato ABAPEL.xlsx) ──
   const HEAD2 = [
-    'Seq.Prod','Cliente','P.O.','Data Prod','Qtde. Prod.',
+    'Seq.Prod','Cliente','P.O.','Data Pedido','Qtde. Prod.',
     'OF','OC','Qtde Pedido','largura','comprimento (facão)',
     'Sliter Vincadeira','m²','ML','t/prod','Min prod','kg',
     'Arranjo','Formato bobinas','Largura util','Ponta Refile','Refile',
@@ -1312,7 +1346,7 @@ function exportaXLSX() {
   Object.keys(porDia).sort().forEach(dia => {
     const ativos2 = porDia[dia].filter(o => !o.cancelada);
     if (!ativos2.length) return;
-    sortOFsDia(ativos2).forEach(o => {
+    (opcoes.sortFn || sortOFsDia)(ativos2).forEach(o => {
       const cc2 = calcOF(o);
       seq2++;
       totQtde2 += o.qtde || 0;
@@ -1364,9 +1398,9 @@ function exportaXLSX() {
   ];
   ws2['!merges'] = merges2;
   ws2['!rows'] = [{ hpt:18 }, { hpt:30 }];
-  XLSX.utils.book_append_sheet(wb, ws2, 'tabela_limpa');
+  XLSX.utils.book_append_sheet(wb, ws2, opcoes.aba2);
 
-  const nome = 'Programacao_Prime_' + new Date().toISOString().slice(0, 10) + '.xlsx';
+  const nome = opcoes.arquivo + new Date().toISOString().slice(0, 10) + '.xlsx';
   const dados = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
   const blob = new Blob([dados], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
   const file = new File([blob], nome, { type: blob.type });
