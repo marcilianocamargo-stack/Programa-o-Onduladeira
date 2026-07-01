@@ -356,6 +356,17 @@ details .corpo{padding:10px 0}
    - Sugestão de bobina: menor formato com ponta ≥ 20 mm
    - Canceladas: vermelho, fora dos somatórios                                  */
 
+/* MANUTENÇÃO TEMPORÁRIA: um jogo de vincos da máquina quebrou (restam 5 de 6 jogos).
+   O limite depende de quantos vincos o pedido usa por chapa: jogos necessários =
+   (nº de vincos por chapa) × (arranjo). Isso não pode passar de VINCOS_DISPONIVEIS.
+   Ex.: pedido com 2 vincos por chapa → máx. 2 chapas (2×2=4 ≤ 5, 2×3=6 > 5 não dá).
+   Pedido com 5 vincos por chapa → máx. 1 chapa (5×1=5). Sem vinco, não é afetado (até 3).
+   A tabela de arranjos continua mostrando todas as opções (até 3) para escolha manual,
+   só a seleção AUTOMÁTICA respeita esse limite. Quando os vincos forem consertados,
+   mude MANUTENCAO_VINCO para false. */
+const MANUTENCAO_VINCO = true;
+const VINCOS_DISPONIVEIS = 5;
+
 const KEY = 'prime_of_v1';
 
 const SEED = {
@@ -501,6 +512,19 @@ function calcOF(of) {
   return c;
 }
 
+function temVincoReal(vinco) {
+  const t = (vinco || '').trim().toLowerCase();
+  return !!t && t !== 'x' && t !== 's/v';
+}
+
+/* quantos vincos (cortes internos) a chapa tem, ex.: "77x150x77" = 2 vincos */
+function contaVincos(vinco) {
+  if (!temVincoReal(vinco)) return 0;
+  const t = vinco.trim().toLowerCase();
+  const partes = t.split(/[x×\s]+/).map(Number).filter(n => !isNaN(n) && n > 0);
+  return Math.max(0, partes.length - 1);
+}
+
 function validaVinco(vinco, largMM) {
   const t = (vinco || '').trim().toLowerCase();
   if (!t || t === 'x' || t === 's/v') return { ok: true, soma: null };
@@ -522,10 +546,11 @@ function arranjosPorFormato(largMM) {
     .filter(Boolean);
 }
 
-function melhor(largMM) {
-  const t = arranjosPorFormato(largMM);
+function melhor(largMM, maxArranjo) {
+  const cap = maxArranjo || 3;
+  const t = arranjosPorFormato(largMM).filter(x => x.arranjo <= cap);
   if (!t.length) return null;
-  
+
   // Prioriza: 1º maior quantidade de chapas (arranjo); 2º menor refile em caso de empate
   return t.reduce((m, x) => {
     if (x.arranjo > m.arranjo) return x;
@@ -697,9 +722,13 @@ function escolheBobina(a, b) { $('fArranjo').value = a; $('fBobina').value = b; 
 
 function recalcula() {
   const of = ofDoForm();
-  // tabela: arranjos por formato de bobina
+  // tabela: arranjos por formato de bobina (mostra sempre até 3, mesmo em manutenção)
   const tab = arranjosPorFormato(of.larg);
-  const top = melhor(of.larg);
+  const nv = contaVincos(of.vinco);
+  const capArranjo = (MANUTENCAO_VINCO && nv > 0)
+    ? Math.max(1, Math.min(3, Math.floor(VINCOS_DISPONIVEIS / nv)))
+    : 3;
+  const top = melhor(of.larg, capArranjo);
   const box = $('opcoesBobina');
   if (tab.length) {
     let h = '<table class="tbArr"><thead><tr><th>Bobina</th><th>Arranjos</th><th>Ponta</th><th>Refile</th></tr></thead><tbody>';
@@ -751,6 +780,10 @@ function recalcula() {
     avV = '<div class="aviso ruim">A soma dos vincos (' + v.soma + ' mm) não fecha com a largura (' + of.larg + ' mm). Confira as posições.</div>';
   else if (v.soma != null && v.minDist != null && L.vincoMin && v.minDist < L.vincoMin)
     avV = '<div class="aviso ruim">Distância entre vincos de ' + v.minDist + ' mm — mínimo da máquina é ' + L.vincoMin + ' mm.</div>';
+  else if (MANUTENCAO_VINCO && nv > 0 && nv * of.arranjo > VINCOS_DISPONIVEIS)
+    avV = '<div class="aviso ruim">⚠️ Manutenção: este arranjo precisa de ' + (nv * of.arranjo) +
+      ' jogos de vinco (' + nv + ' × ' + of.arranjo + '), mas só há ' + VINCOS_DISPONIVEIS +
+      ' disponíveis agora. Reduza o arranjo.</div>';
   $('avisoVinco').innerHTML = avV;
 
   // coluna
