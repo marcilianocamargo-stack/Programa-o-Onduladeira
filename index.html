@@ -517,12 +517,12 @@ function temVincoReal(vinco) {
   return !!t && t !== 'x' && t !== 's/v';
 }
 
-/* quantos vincos (cortes internos) a chapa tem, ex.: "77x150x77" = 2 vincos */
+/* quantos jogos de vinco a chapa usa, ex.: "77x150x77" = 3 vincos (um por posição/segmento) */
 function contaVincos(vinco) {
   if (!temVincoReal(vinco)) return 0;
   const t = vinco.trim().toLowerCase();
   const partes = t.split(/[x×\s]+/).map(Number).filter(n => !isNaN(n) && n > 0);
-  return Math.max(0, partes.length - 1);
+  return partes.length;
 }
 
 function validaVinco(vinco, largMM) {
