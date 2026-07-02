@@ -359,8 +359,10 @@ details .corpo{padding:10px 0}
 /* MANUTENÇÃO TEMPORÁRIA: um jogo de vincos da máquina quebrou (restam 5 de 6 jogos).
    O limite depende de quantos vincos o pedido usa por chapa: jogos necessários =
    (nº de vincos por chapa) × (arranjo). Isso não pode passar de VINCOS_DISPONIVEIS.
-   Ex.: pedido com 2 vincos por chapa → máx. 2 chapas (2×2=4 ≤ 5, 2×3=6 > 5 não dá).
-   Pedido com 5 vincos por chapa → máx. 1 chapa (5×1=5). Sem vinco, não é afetado (até 3).
+   Jogos por chapa = metade do nº de medidas do vinco, arredondando para cima:
+   "93x190x93" = 2 jogos → máx. 2 chapas (2×2=4 ≤ 5; 2×3=6 > 5 não dá) → sugere 2 na
+   bobina 800, não 3 na 1150. "88x109x176x109x88" = 3 jogos → máx. 1 chapa (3×2=6 > 5).
+   Sem vinco, não é afetado (até 3).
    A tabela de arranjos continua mostrando todas as opções (até 3) para escolha manual,
    só a seleção AUTOMÁTICA respeita esse limite. Quando os vincos forem consertados,
    mude MANUTENCAO_VINCO para false. */
@@ -517,12 +519,15 @@ function temVincoReal(vinco) {
   return !!t && t !== 'x' && t !== 's/v';
 }
 
-/* quantos jogos de vinco a chapa usa, ex.: "77x150x77" = 3 vincos (um por posição/segmento) */
+/* quantos jogos de vinco a chapa usa: jogos = metade do nº de medidas, arredondando
+   para cima (regra confirmada na máquina).
+   Ex.: "93x190x93" (3 medidas) = 2 jogos.
+   Ex.: "88x109x176x109x88" (5 medidas) = 3 jogos. */
 function contaVincos(vinco) {
   if (!temVincoReal(vinco)) return 0;
   const t = vinco.trim().toLowerCase();
   const partes = t.split(/[x×\s]+/).map(Number).filter(n => !isNaN(n) && n > 0);
-  return partes.length;
+  return Math.ceil(partes.length / 2);
 }
 
 function validaVinco(vinco, largMM) {
