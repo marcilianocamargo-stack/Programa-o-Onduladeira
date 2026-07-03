@@ -1853,11 +1853,13 @@ async function carregaFilaOCR(fileList) {
       let parsed = null;
       try { parsed = JSON.parse(limpo); } catch(e) {}
 
-      // Formato multi-OC: array de objetos com campos "OC" e "Itens" (ou "itens")
-      if (Array.isArray(parsed) && parsed.length && parsed[0] && parsed[0].OC &&
+      // Formato multi-OC: array de objetos com "Itens" (ou "itens").
+      // A OC pode vir vazia; nesse caso usa o nome do arquivo como OC.
+      if (Array.isArray(parsed) && parsed.length && parsed[0] &&
           Array.isArray(parsed[0].Itens || parsed[0].itens)) {
+        const ocFallback = file.name.replace(/\.[^.]+$/, '').trim();
         for (const oc of parsed) {
-          const ocNome    = String(oc.OC       || '').trim();
+          const ocNome    = String(oc.OC       || '').trim() || ocFallback;
           const ocCliente = String(oc.Cliente  || '').trim();
           const ocItens   = oc.Itens || oc.itens || [];
           for (let j = 0; j < ocItens.length; j++) {
@@ -1889,10 +1891,12 @@ async function carregaFilaOCR(fileList) {
 
       // Formato flat: array de itens sem agrupamento em "Itens" — cada objeto já é um item
       // Ex: [{Cliente, OC, Quantidade, Largura, Comprimento, Vincos, "Tipo de Papel"}, …]
-      if (Array.isArray(parsed) && parsed.length && parsed[0] && parsed[0].OC && parsed[0].Quantidade) {
+      // A OC pode vir vazia; nesse caso usa o nome do arquivo como OC.
+      if (Array.isArray(parsed) && parsed.length && parsed[0] && parsed[0].Quantidade) {
+        const ocFallback = file.name.replace(/\.[^.]+$/, '').trim();
         for (let j = 0; j < parsed.length; j++) {
           const item = parsed[j];
-          const ocNome    = String(item.OC      || '').trim();
+          const ocNome    = String(item.OC      || '').trim() || ocFallback;
           const ocCliente = String(item.Cliente || '').trim();
           const tipoPapel = parseTipoPapel(item['Tipo de Papel']);
           const entryNome = `${ocNome} — ${item.Largura}×${item.Comprimento}mm`;
