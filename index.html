@@ -479,7 +479,7 @@ function salva() { localStorage.setItem(KEY, JSON.stringify(db)); }
    assim dois aparelhos nunca reservam o mesmo número. O sha do arquivo funciona
    como trava otimista: se outro aparelho gravar primeiro, o PUT falha (409/422)
    e tentamos de novo com o valor mais recente. */
-const OF_GITHUB_TOKEN = 'COLE_AQUI_SEU_TOKEN_GITHUB'; // fine-grained PAT, só com Contents:read/write no repo abaixo
+const OF_GITHUB_TOKEN = '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'; // fine-grained PAT, só com Contents:read/write no repo abaixo
 const OF_REPO = 'marcilianocamargo-stack/controle-producao-etiquetas';
 const OF_ARQUIVO = 'of-counter.json';
 const OF_PRIMEIRA = 1023;
