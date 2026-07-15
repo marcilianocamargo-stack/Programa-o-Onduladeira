@@ -405,6 +405,7 @@ const SEED = {
   ],
   /* tipo: S = onda simples (capa, miolo, interna)  D = dupla (CE, mioloC, intermediária, mioloB, CI)
      colMin em kgf/cm; gramB/gramC = gramatura nominal de venda (tabela de especificação) */
+  ofAtual: null, // nº de OF (Ordem de Fabricação/FSC) reservado para a programação em aberto neste aparelho
   produtos: [
     { cod: 'P25',  tipo: 'S', ondas: ['B', 'C'], colMin: 2.5, gramB: 315, gramC: 324, rec: ['TPQ100', 'TPQ100', 'TPQ100'] },
     { cod: 'P30',  tipo: 'S', ondas: ['B', 'C'], colMin: 3.0, gramB: 330, gramC: 340, rec: ['TPQ100', 'TPQ100', 'TPQ100'] },
@@ -462,9 +463,71 @@ function carrega() {
     db.produtos.forEach(p => { p.rec = p.rec.map(r => r === 'TLQ95' ? 'TPQ100' : r); });
     db.v = 5;
   }
+  if (db.v < 6) {  // migração: OF única por programação (exigência FSC)
+    if (db.ofAtual === undefined) db.ofAtual = null;
+    db.v = 6;
+  }
   salva();
 }
 function salva() { localStorage.setItem(KEY, JSON.stringify(db)); }
+
+/* ---------- OF única por programação (exigência FSC) ----------
+   O nº de OF é diferente do nº de OP (coluna "OP" da planilha, campo "Nº da OF"
+   do form — já é outra numeração, não mexer nela). A OF de verdade fica num contador central
+   compartilhado no repositório controle-producao-etiquetas (arquivo OF_ARQUIVO),
+   lido/incrementado/gravado via GitHub Contents API, nunca em localStorage —
+   assim dois aparelhos nunca reservam o mesmo número. O sha do arquivo funciona
+   como trava otimista: se outro aparelho gravar primeiro, o PUT falha (409/422)
+   e tentamos de novo com o valor mais recente. */
+const OF_GITHUB_TOKEN = 'COLE_AQUI_SEU_TOKEN_GITHUB'; // fine-grained PAT, só com Contents:read/write no repo abaixo
+const OF_REPO = 'marcilianocamargo-stack/controle-producao-etiquetas';
+const OF_ARQUIVO = 'of-counter.json';
+const OF_PRIMEIRA = 1023;
+
+function b64ParaTexto(b64) { return decodeURIComponent(escape(atob(b64.replace(/\n/g, '')))); }
+function textoParaB64(txt) { return btoa(unescape(encodeURIComponent(txt))); }
+
+async function leOfCounter() {
+  const resp = await fetch('https://api.github.com/repos/' + OF_REPO + '/contents/' + OF_ARQUIVO, {
+    headers: { Authorization: 'token ' + OF_GITHUB_TOKEN, Accept: 'application/vnd.github+json' }
+  });
+  if (resp.status === 404) return { ultimaOF: OF_PRIMEIRA - 1, sha: null };
+  if (!resp.ok) throw new Error('Falha ao ler o contador central de OF (HTTP ' + resp.status + ').');
+  const j = await resp.json();
+  const conteudo = JSON.parse(b64ParaTexto(j.content));
+  return { ultimaOF: +conteudo.ultimaOF || (OF_PRIMEIRA - 1), sha: j.sha };
+}
+
+async function gravaOfCounter(novaOF, sha) {
+  return fetch('https://api.github.com/repos/' + OF_REPO + '/contents/' + OF_ARQUIVO, {
+    method: 'PUT',
+    headers: {
+      Authorization: 'token ' + OF_GITHUB_TOKEN,
+      Accept: 'application/vnd.github+json',
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      message: 'Atualiza contador de OF para ' + novaOF,
+      content: textoParaB64(JSON.stringify({ ultimaOF: novaOF })),
+      ...(sha ? { sha } : {})
+    })
+  });
+}
+
+/* Lê, soma 1 e grava de volta imediatamente — antes de liberar o lançamento
+   da 1ª OF da programação. Repete em caso de conflito (dois aparelhos ao mesmo tempo). */
+async function obterNovaOFCentral() {
+  for (let tentativa = 0; tentativa < 5; tentativa++) {
+    const atual = await leOfCounter();
+    const nova = atual.ultimaOF + 1;
+    const resp = await gravaOfCounter(nova, atual.sha);
+    if (resp.ok) return nova;
+    if (resp.status !== 409 && resp.status !== 422)
+      throw new Error('Falha ao gravar o contador central de OF (HTTP ' + resp.status + ').');
+    // 409/422 = outro aparelho gravou primeiro (sha mudou) — tenta de novo com o valor atual
+  }
+  throw new Error('Não foi possível reservar um número de OF único após várias tentativas.');
+}
 
 /* ---------- utilitários ---------- */
 const $ = id => document.getElementById(id);
@@ -821,7 +884,7 @@ function recalcula() {
   function metro(t, v) { return '<div class="m"><b>' + v + '</b><span>' + t + '</span></div>'; }
 }
 
-function salvaOF(ev) {
+async function salvaOF(ev) {
   ev.preventDefault();
   const of = ofDoForm();
   if (!of.bobina) { alert('Informe o formato da bobina.'); return false; }
@@ -830,8 +893,24 @@ function salvaOF(ev) {
   if (of.id) {
     const i = db.ofs.findIndex(x => x.id === of.id);
     of.cancelada = db.ofs[i].cancelada;
+    of.ofFsc = db.ofs[i].ofFsc;
     db.ofs[i] = of;
   } else {
+    if (!db.ofAtual) {
+      const btn = $('btnSalvar'), txtOrig = btn.textContent;
+      btn.disabled = true; btn.textContent = 'Reservando nº de OF...';
+      try {
+        db.ofAtual = await obterNovaOFCentral();
+        salva();
+      } catch (e) {
+        alert('Não foi possível reservar o número de OF (necessário para a nota fiscal FSC). ' +
+          'Verifique a internet e tente novamente.\n\n' + e.message);
+        btn.disabled = false; btn.textContent = txtOrig;
+        return false;
+      }
+      btn.disabled = false; btn.textContent = txtOrig;
+    }
+    of.ofFsc = db.ofAtual;
     of.id = Date.now() + '-' + Math.random().toString(36).slice(2, 7);
     db.ofs.push(of);
   }
@@ -1155,7 +1234,7 @@ function _exportaXLSX(opcoes) {
   // ── Tabela limpa (padrão Prime — mesmo formato ABAPEL.xlsx) ──
   const HEAD2 = [
     'Seq.Prod','Cliente','P.O.','Data Pedido','Qtde. Prod.',
-    'OF','OC','Qtde Pedido','largura','comprimento (facão)',
+    'OP','OC','Qtde Pedido','largura','comprimento (facão)',
     'Sliter Vincadeira','m²','ML','t/prod','Min prod','kg',
     'Arranjo','Formato bobinas','Largura util','Ponta Refile','Refile',
     'Capa Forradeira','MB','CIB','MC','CIC',
@@ -1173,10 +1252,11 @@ function _exportaXLSX(opcoes) {
     }
     return r2;
   }
-  // Título
+  // Título (mesclado até a coluna C; a OF única da programação fica em D1)
   const rT2 = addRow2(['PROGRAMAÇÃO ONDULADEIRA - ' + clientesStr],
     () => ({ font:{ bold:true, sz:13, color:{ rgb:C.hbg } } }));
-  merges2.push({ s:{ r:rT2, c:0 }, e:{ r:rT2, c:NC2-1 } });
+  merges2.push({ s:{ r:rT2, c:0 }, e:{ r:rT2, c:2 } });
+  if (db.ofAtual) aoa2[rT2][3] = 'OF: ' + String(db.ofAtual).padStart(6, '0');
   // Cabeçalho
   addRow2([...HEAD2], () => ({
     font:{ bold:true, color:{ rgb:C.hfg }, sz:10 },
@@ -1265,7 +1345,7 @@ function xlsxOperadores() {
   const b4   = { top:brdT, bottom:brdT, left:brdT, right:brdT };
   const b4m  = { top:brdM, bottom:brdM, left:brdM, right:brdM };
   const NCOLS = 9;
-  const HEAD = ['#', 'OF', 'Produto', 'Chapas', 'Medidas', 'V', 'Bobina / Papéis', 'Arr.', 'Paletes'];
+  const HEAD = ['#', 'OP', 'Produto', 'Chapas', 'Medidas', 'V', 'Bobina / Papéis', 'Arr.', 'Paletes'];
 
   Object.keys(dias).sort().forEach(dia => {
     const ofsDay = dias[dia].slice();
@@ -1388,7 +1468,7 @@ function copiaLinhaOF(id) {
   const refile = o.bobina ? (ponta / o.bobina).toFixed(4) : '';
   const pps    = o.papeis || [];
   // Colunas na mesma ordem da aba tabela_limpa do Excel exportado:
-  // Seq.Prod | Cliente | P.O. | Data Prod | Qtde.Prod. | OF | OC | Qtde Pedido
+  // Seq.Prod | Cliente | P.O. | Data Prod | Qtde.Prod. | OP | OC | Qtde Pedido
   // largura | comprimento | Sliter Vincadeira | m² | ML | t/prod | Min prod | kg
   // Arranjo | Formato bobinas | Largura util | Ponta Refile | Refile
   // Capa Forradeira | MB | CIB | MC | CIC | Palete Qtde | Palete (medida LxC)
@@ -1557,7 +1637,7 @@ function importaJSON(inp) {
 function limpaOFs() {
   if (!db.ofs.length) { alert('A programação já está vazia.'); return; }
   if (confirm('Apagar todas as ' + db.ofs.length + ' OFs da programação?\n(Papéis, produtos e parâmetros são mantidos.)')) {
-    db.ofs = []; salva(); desenhaProg();
+    db.ofs = []; db.ofAtual = null; salva(); desenhaProg();
   }
 }
 function zeraTudo() {
@@ -1689,8 +1769,8 @@ async function carregaFilaOCR(fileList) {
               cliente: ocCliente,
               oc: ocNome,
               qtde: parseQtdeBR(item.Quantidade),
-              larg: parseInt(item.Largura, 10) || '',
-              compr: parseInt(item.Comprimento, 10) || '',
+              larg: parseQtdeBR(item.Largura) || '',
+              compr: parseQtdeBR(item.Comprimento) || '',
               vinco: parseVinco(item.Vincos || item.vincos),
               tipoPapelOriginal: item['Tipo de Papel'] || '',
               ...(tipoPapel || {})
@@ -1723,8 +1803,8 @@ async function carregaFilaOCR(fileList) {
             cliente: ocCliente,
             oc: ocNome,
             qtde: parseQtdeBR(item.Quantidade),
-            larg: parseInt(item.Largura, 10) || '',
-            compr: parseInt(item.Comprimento, 10) || '',
+            larg: parseQtdeBR(item.Largura) || '',
+            compr: parseQtdeBR(item.Comprimento) || '',
             vinco: parseVinco(item.Vincos || item.vincos),
             tipoPapelOriginal: item['Tipo de Papel'] || '',
             ...(tipoPapel || {})
