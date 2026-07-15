@@ -530,6 +530,64 @@ async function obterNovaOFCentral() {
   throw new Error('Não foi possível reservar um número de OF único após várias tentativas.');
 }
 
+/* ---------- OP única por pedido (mesma lógica da OF, num arquivo à parte) ----------
+   Diferente da OF (uma por programação), a OP é nova a cada pedido. O campo
+   continua editável — isto só troca de onde vem o número sugerido/registrado,
+   que passa a ser o contador central em vez do maior nº já visto neste aparelho. */
+const OP_ARQUIVO = 'op-counter.json';
+const OP_ULTIMA_CONHECIDA = 261799; // seed usado só se o arquivo ainda não existir no repo central
+
+async function leOpCounter() {
+  const resp = await fetch('https://api.github.com/repos/' + OF_REPO + '/contents/' + OP_ARQUIVO, {
+    headers: { Authorization: 'token ' + OF_GITHUB_TOKEN, Accept: 'application/vnd.github+json' }
+  });
+  if (resp.status === 404) return { ultimaOP: OP_ULTIMA_CONHECIDA, sha: null };
+  if (!resp.ok) throw new Error('Falha ao ler o contador central de OP (HTTP ' + resp.status + ').');
+  const j = await resp.json();
+  const conteudo = JSON.parse(b64ParaTexto(j.content));
+  return { ultimaOP: +conteudo.ultimaOP || OP_ULTIMA_CONHECIDA, sha: j.sha };
+}
+
+async function gravaOpCounter(novaUltima, sha) {
+  return fetch('https://api.github.com/repos/' + OF_REPO + '/contents/' + OP_ARQUIVO, {
+    method: 'PUT',
+    headers: {
+      Authorization: 'token ' + OF_GITHUB_TOKEN,
+      Accept: 'application/vnd.github+json',
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      message: 'Atualiza contador de OP para ' + novaUltima,
+      content: textoParaB64(JSON.stringify({ ultimaOP: novaUltima })),
+      ...(sha ? { sha } : {})
+    })
+  });
+}
+
+/* Só leitura — usada para pré-preencher o campo com a próxima OP sugerida,
+   sem reservar nada ainda (a reserva de verdade só acontece ao salvar). */
+async function sugereProximaOPCentral() {
+  const atual = await leOpCounter();
+  return atual.ultimaOP + 1;
+}
+
+/* Reserva no contador central a OP escolhida (a sugerida ou uma digitada por
+   cima). Se for maior que o último valor conhecido, avança o contador até
+   ela (garante que nenhum outro aparelho repita esse número ou um menor).
+   Se for menor ou igual, não mexe no contador (pode ser lançamento de pedido
+   atrasado com nº antigo de propósito) mas avisa que pode já ter sido usada. */
+async function reservaOpCentral(opEscolhida) {
+  for (let tentativa = 0; tentativa < 5; tentativa++) {
+    const atual = await leOpCounter();
+    if (opEscolhida <= atual.ultimaOP) return { avancou: false, ultimaConhecida: atual.ultimaOP };
+    const resp = await gravaOpCounter(opEscolhida, atual.sha);
+    if (resp.ok) return { avancou: true };
+    if (resp.status !== 409 && resp.status !== 422)
+      throw new Error('Falha ao gravar o contador central de OP (HTTP ' + resp.status + ').');
+  }
+  throw new Error('Não foi possível confirmar a OP no contador central após várias tentativas.');
+}
+
 /* ---------- utilitários ---------- */
 const $ = id => document.getElementById(id);
 const fmt = (n, d = 1) => (n == null || isNaN(n)) ? '—' : n.toLocaleString('pt-BR', { minimumFractionDigits: d, maximumFractionDigits: d });
@@ -913,6 +971,23 @@ async function salvaOF(ev) {
       btn.disabled = false; btn.textContent = txtOrig;
     }
     of.ofFsc = db.ofAtual;
+
+    const btn2 = $('btnSalvar'), txtOrig2 = btn2.textContent;
+    btn2.disabled = true; btn2.textContent = 'Confirmando OP...';
+    try {
+      const r = await reservaOpCentral(+of.of || 0);
+      if (!r.avancou) {
+        const seguir = confirm('A OP ' + of.of + ' pode já ter sido usada — o contador central já está em ' +
+          r.ultimaConhecida + '. Registrar mesmo assim?');
+        if (!seguir) { btn2.disabled = false; btn2.textContent = txtOrig2; return false; }
+      }
+    } catch (e) {
+      alert('Não foi possível confirmar a OP no contador central. Verifique a internet e tente novamente.\n\n' + e.message);
+      btn2.disabled = false; btn2.textContent = txtOrig2;
+      return false;
+    }
+    btn2.disabled = false; btn2.textContent = txtOrig2;
+
     of.id = Date.now() + '-' + Math.random().toString(36).slice(2, 7);
     db.ofs.push(of);
   }
@@ -935,11 +1010,23 @@ function limpaForm() {
   $('btnSalvar').textContent = 'Registrar OF';
   const hoje = new Date();
   $('fData').value = hoje.toISOString().slice(0, 10);
-  // próxima OP = maior registrada + 1
-  const max = db.ofs.reduce((m, o) => Math.max(m, +o.of || 0), 0);
-  if (max) $('fOF').value = max + 1;
   aoMudarProduto();
   atualizaOfCentralView();
+  sugereOP();
+}
+
+/* Pré-preenche o campo (só sugestão, não reserva nada) com a próxima OP do
+   contador central. Se falhar (sem internet etc.), cai de volta na conta
+   local de sempre — o campo continua editável, o operador corrige se precisar. */
+async function sugereOP() {
+  const campo = $('fOF');
+  try {
+    const prox = await sugereProximaOPCentral();
+    if (!campo.value) campo.value = prox;
+  } catch (e) {
+    const max = db.ofs.reduce((m, o) => Math.max(m, +o.of || 0), 0);
+    if (max && !campo.value) campo.value = max + 1;
+  }
 }
 
 function atualizaOfCentralView() {
