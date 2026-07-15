@@ -216,9 +216,10 @@ details .corpo{padding:10px 0}
         <input type="hidden" id="fEditId">
         <div class="row">
           <div><label>Data do pedido</label><input type="date" id="fData" required></div>
-          <div><label>Nº da OF</label><input type="number" id="fOF" inputmode="numeric" required></div>
+          <div><label>Nº da OP</label><input type="number" id="fOF" inputmode="numeric" required></div>
           <div><label>OC (ordem de compra)</label><input id="fOC" autocomplete="off" placeholder="—"></div>
         </div>
+        <div class="nota" id="ofCentralView"></div>
         <label>Cliente</label>
         <input id="fCliente" list="dlClientes" autocomplete="off" required>
         <datalist id="dlClientes"></datalist>
@@ -635,6 +636,7 @@ function trocaAba(qual) {
   });
   if (qual === 'prog') desenhaProg();
   if (qual === 'tab') desenhaTabelas();
+  if (qual === 'nova') atualizaOfCentralView();
 }
 
 /* ---------- formulário Nova OF ---------- */
@@ -931,12 +933,21 @@ function limpaForm() {
   $('fEditId').value = '';
   $('fVinco').value = 'x';
   $('btnSalvar').textContent = 'Registrar OF';
-  const hoje = new Date(); 
+  const hoje = new Date();
   $('fData').value = hoje.toISOString().slice(0, 10);
-  // próxima OF = maior registrada + 1
+  // próxima OP = maior registrada + 1
   const max = db.ofs.reduce((m, o) => Math.max(m, +o.of || 0), 0);
   if (max) $('fOF').value = max + 1;
   aoMudarProduto();
+  atualizaOfCentralView();
+}
+
+function atualizaOfCentralView() {
+  const el = $('ofCentralView');
+  if (!el) return;
+  el.innerHTML = db.ofAtual
+    ? 'OF desta programação: <b>' + String(db.ofAtual).padStart(6, '0') + '</b>'
+    : 'OF desta programação: <b>será gerada ao registrar o 1º pedido</b>';
 }
 
 function editaOF(id) {
@@ -1252,11 +1263,13 @@ function _exportaXLSX(opcoes) {
     }
     return r2;
   }
-  // Título (mesclado até a coluna C; a OF única da programação fica em D1)
-  const rT2 = addRow2(['PROGRAMAÇÃO ONDULADEIRA - ' + clientesStr],
+  // Título (mesclado em toda a largura, como sempre foi — a OF única da
+  // programação vai junto no mesmo texto, sempre no formato "OF: 000123"
+  // para os outros apps conseguirem localizá-la por busca de texto)
+  const tituloOF = db.ofAtual ? ('  —  OF: ' + String(db.ofAtual).padStart(6, '0')) : '';
+  const rT2 = addRow2(['PROGRAMAÇÃO ONDULADEIRA - ' + clientesStr + tituloOF],
     () => ({ font:{ bold:true, sz:13, color:{ rgb:C.hbg } } }));
-  merges2.push({ s:{ r:rT2, c:0 }, e:{ r:rT2, c:2 } });
-  if (db.ofAtual) aoa2[rT2][3] = 'OF: ' + String(db.ofAtual).padStart(6, '0');
+  merges2.push({ s:{ r:rT2, c:0 }, e:{ r:rT2, c:NC2-1 } });
   // Cabeçalho
   addRow2([...HEAD2], () => ({
     font:{ bold:true, color:{ rgb:C.hfg }, sz:10 },
