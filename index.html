@@ -472,103 +472,32 @@ function carrega() {
 }
 function salva() { localStorage.setItem(KEY, JSON.stringify(db)); }
 
-/* ---------- OF única por programação (exigência FSC) ----------
-   O nº de OF é diferente do nº de OP (coluna "OP" da planilha, campo "Nº da OF"
-   do form — já é outra numeração, não mexer nela). A OF de verdade fica num contador central
-   compartilhado no repositório controle-producao-etiquetas (arquivo OF_ARQUIVO),
-   lido/incrementado/gravado via GitHub Contents API, nunca em localStorage —
-   assim dois aparelhos nunca reservam o mesmo número. O sha do arquivo funciona
-   como trava otimista: se outro aparelho gravar primeiro, o PUT falha (409/422)
-   e tentamos de novo com o valor mais recente. */
-const OF_GITHUB_TOKEN = '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'; // fine-grained PAT, só com Contents:read/write no repo abaixo
-const OF_REPO = 'marcilianocamargo-stack/controle-producao-etiquetas';
-const OF_ARQUIVO = 'of-counter.json';
-const OF_PRIMEIRA = 1023;
+/* ---------- OF única por programação / OP única por pedido (exigência FSC) ----------
+   O nº de OF é diferente do nº de OP (coluna "OP" da planilha, campo "Nº da OP"
+   do form — já é outra numeração, não mexer nela). Os dois contadores ficam num
+   arquivo central (of-counter.json / op-counter.json) no repositório
+   controle-producao-etiquetas, lidos/incrementados/gravados por um Cloudflare
+   Worker — o token do GitHub fica só no Worker, nunca neste código público
+   (um token embutido aqui é sempre revogado automaticamente pelo GitHub).
+   Nunca em localStorage — assim dois aparelhos nunca reservam o mesmo número. */
+const CONTADOR_WORKER_URL = 'https://sparkling-voice-98b7nduladeira-contador.marciliano-camargo.workers.dev';
 
-function b64ParaTexto(b64) { return decodeURIComponent(escape(atob(b64.replace(/\n/g, '')))); }
-function textoParaB64(txt) { return btoa(unescape(encodeURIComponent(txt))); }
-
-async function leOfCounter() {
-  const resp = await fetch('https://api.github.com/repos/' + OF_REPO + '/contents/' + OF_ARQUIVO, {
-    headers: { Authorization: 'token ' + OF_GITHUB_TOKEN, Accept: 'application/vnd.github+json' }
-  });
-  if (resp.status === 404) return { ultimaOF: OF_PRIMEIRA - 1, sha: null };
-  if (!resp.ok) throw new Error('Falha ao ler o contador central de OF (HTTP ' + resp.status + ').');
-  const j = await resp.json();
-  const conteudo = JSON.parse(b64ParaTexto(j.content));
-  return { ultimaOF: +conteudo.ultimaOF || (OF_PRIMEIRA - 1), sha: j.sha };
-}
-
-async function gravaOfCounter(novaOF, sha) {
-  return fetch('https://api.github.com/repos/' + OF_REPO + '/contents/' + OF_ARQUIVO, {
-    method: 'PUT',
-    headers: {
-      Authorization: 'token ' + OF_GITHUB_TOKEN,
-      Accept: 'application/vnd.github+json',
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({
-      message: 'Atualiza contador de OF para ' + novaOF,
-      content: textoParaB64(JSON.stringify({ ultimaOF: novaOF })),
-      ...(sha ? { sha } : {})
-    })
-  });
-}
-
-/* Lê, soma 1 e grava de volta imediatamente — antes de liberar o lançamento
-   da 1ª OF da programação. Repete em caso de conflito (dois aparelhos ao mesmo tempo). */
+/* Reserva uma OF nova no contador central — antes de liberar o lançamento
+   da 1ª OF da programação. O Worker cuida do sha/conflito entre aparelhos. */
 async function obterNovaOFCentral() {
-  for (let tentativa = 0; tentativa < 5; tentativa++) {
-    const atual = await leOfCounter();
-    const nova = atual.ultimaOF + 1;
-    const resp = await gravaOfCounter(nova, atual.sha);
-    if (resp.ok) return nova;
-    if (resp.status !== 409 && resp.status !== 422)
-      throw new Error('Falha ao gravar o contador central de OF (HTTP ' + resp.status + ').');
-    // 409/422 = outro aparelho gravou primeiro (sha mudou) — tenta de novo com o valor atual
-  }
-  throw new Error('Não foi possível reservar um número de OF único após várias tentativas.');
-}
-
-/* ---------- OP única por pedido (mesma lógica da OF, num arquivo à parte) ----------
-   Diferente da OF (uma por programação), a OP é nova a cada pedido. O campo
-   continua editável — isto só troca de onde vem o número sugerido/registrado,
-   que passa a ser o contador central em vez do maior nº já visto neste aparelho. */
-const OP_ARQUIVO = 'op-counter.json';
-const OP_ULTIMA_CONHECIDA = 261799; // seed usado só se o arquivo ainda não existir no repo central
-
-async function leOpCounter() {
-  const resp = await fetch('https://api.github.com/repos/' + OF_REPO + '/contents/' + OP_ARQUIVO, {
-    headers: { Authorization: 'token ' + OF_GITHUB_TOKEN, Accept: 'application/vnd.github+json' }
-  });
-  if (resp.status === 404) return { ultimaOP: OP_ULTIMA_CONHECIDA, sha: null };
-  if (!resp.ok) throw new Error('Falha ao ler o contador central de OP (HTTP ' + resp.status + ').');
-  const j = await resp.json();
-  const conteudo = JSON.parse(b64ParaTexto(j.content));
-  return { ultimaOP: +conteudo.ultimaOP || OP_ULTIMA_CONHECIDA, sha: j.sha };
-}
-
-async function gravaOpCounter(novaUltima, sha) {
-  return fetch('https://api.github.com/repos/' + OF_REPO + '/contents/' + OP_ARQUIVO, {
-    method: 'PUT',
-    headers: {
-      Authorization: 'token ' + OF_GITHUB_TOKEN,
-      Accept: 'application/vnd.github+json',
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({
-      message: 'Atualiza contador de OP para ' + novaUltima,
-      content: textoParaB64(JSON.stringify({ ultimaOP: novaUltima })),
-      ...(sha ? { sha } : {})
-    })
-  });
+  const resp = await fetch(CONTADOR_WORKER_URL + '/of/reservar', { method: 'POST' });
+  const j = await resp.json().catch(() => ({}));
+  if (!resp.ok || j.erro) throw new Error(j.erro || ('Falha ao reservar a OF (HTTP ' + resp.status + ').'));
+  return j.ofNumero;
 }
 
 /* Só leitura — usada para pré-preencher o campo com a próxima OP sugerida,
    sem reservar nada ainda (a reserva de verdade só acontece ao salvar). */
 async function sugereProximaOPCentral() {
-  const atual = await leOpCounter();
-  return atual.ultimaOP + 1;
+  const resp = await fetch(CONTADOR_WORKER_URL + '/op/sugestao');
+  const j = await resp.json().catch(() => ({}));
+  if (!resp.ok || j.erro) throw new Error(j.erro || ('Falha ao buscar sugestão de OP (HTTP ' + resp.status + ').'));
+  return j.proximaOP;
 }
 
 /* Reserva no contador central a OP escolhida (a sugerida ou uma digitada por
@@ -577,15 +506,14 @@ async function sugereProximaOPCentral() {
    Se for menor ou igual, não mexe no contador (pode ser lançamento de pedido
    atrasado com nº antigo de propósito) mas avisa que pode já ter sido usada. */
 async function reservaOpCentral(opEscolhida) {
-  for (let tentativa = 0; tentativa < 5; tentativa++) {
-    const atual = await leOpCounter();
-    if (opEscolhida <= atual.ultimaOP) return { avancou: false, ultimaConhecida: atual.ultimaOP };
-    const resp = await gravaOpCounter(opEscolhida, atual.sha);
-    if (resp.ok) return { avancou: true };
-    if (resp.status !== 409 && resp.status !== 422)
-      throw new Error('Falha ao gravar o contador central de OP (HTTP ' + resp.status + ').');
-  }
-  throw new Error('Não foi possível confirmar a OP no contador central após várias tentativas.');
+  const resp = await fetch(CONTADOR_WORKER_URL + '/op/reservar', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ opEscolhida })
+  });
+  const j = await resp.json().catch(() => ({}));
+  if (!resp.ok || j.erro) throw new Error(j.erro || ('Falha ao confirmar a OP (HTTP ' + resp.status + ').'));
+  return j;
 }
 
 /* ---------- utilitários ---------- */
