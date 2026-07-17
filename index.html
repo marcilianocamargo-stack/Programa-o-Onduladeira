@@ -264,7 +264,7 @@ details .corpo{padding:10px 0}
       </div>
 
       <div class="acoes">
-        <button class="btn" type="submit" id="btnSalvar">Registrar OF</button>
+        <button class="btn" type="submit" id="btnSalvar">Registrar OP</button>
         <button class="btn sec" type="button" onclick="limpaForm()">Limpar</button>
       </div>
     </form>
@@ -926,7 +926,7 @@ async function salvaOF(ev) {
     limpaForm();
     avancaFila();
   } else {
-    limpaForm(); trocaAba('prog');
+    limpaForm();
   }
   return false;
 }
@@ -935,7 +935,7 @@ function limpaForm() {
   $('formOF').reset();
   $('fEditId').value = '';
   $('fVinco').value = 'x';
-  $('btnSalvar').textContent = 'Registrar OF';
+  $('btnSalvar').textContent = 'Registrar OP';
   const hoje = new Date();
   $('fData').value = hoje.toISOString().slice(0, 10);
   aoMudarProduto();
