@@ -169,6 +169,7 @@ details .corpo{padding:10px 0}
     </div>
     <div id="listaProg"></div>
     <div class="acoes">
+      <button class="btn sec" onclick="abreColarOCR()">Colar OCR</button>
       <button class="btn sec" onclick="abreInputFilaOCR()">Fila OCR</button>
       <button class="btn" onclick="exportaXLSX()">Excel por Bobina</button>
       <button class="btn" onclick="exportaXLSXporOC()">Excel por OC</button>
@@ -195,6 +196,7 @@ details .corpo{padding:10px 0}
             <button type="button" class="btn mini sec" id="filaBtnPular" onclick="pulaFila()">Pular</button>
             <button type="button" class="btn mini sec" id="filaBtnDesmarcar" onclick="desmarcarFila()" style="display:none">↩ Reabrir</button>
             <button type="button" class="btn mini sec" id="filaBtnProximo" onclick="navFila(1)">Próx →</button>
+            <button type="button" class="btn mini sec" onclick="abreColarOCR()">+ Colar</button>
             <button type="button" class="btn mini sec" onclick="adicionarFila()">+ Mais</button>
             <button type="button" class="btn mini perigo" onclick="fechaFila()">✕ Fechar</button>
           </div>
@@ -339,6 +341,25 @@ details .corpo{padding:10px 0}
     </details>
   </section>
   <input type="file" id="inputFilaOCR" multiple accept="image/*,.json,.txt" style="display:none" onchange="carregaFilaOCR(this.files)">
+
+  <!-- MODAL: COLAR OCR (texto JSON direto, sem salvar arquivo) -->
+  <div id="colarOCRModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:900;align-items:center;justify-content:center;padding:14px">
+    <div class="card" style="max-width:640px;width:100%;padding:14px;max-height:90vh;overflow:auto">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
+        <span style="font-family:'Barlow Condensed';font-size:17px;font-weight:700;text-transform:uppercase;letter-spacing:.04em">Colar OCR</span>
+        <button type="button" class="btn mini perigo" onclick="fechaColarOCR()">✕ Fechar</button>
+      </div>
+      <p class="nota" style="margin:8px 0">Cole aqui o JSON que o OCR gerou (Ctrl+V). Não precisa salvar em bloco de notas.</p>
+      <textarea id="colarOCRTexto" rows="10" placeholder='[{"Cliente":"…","OC":"…","Itens":[…]}]'
+                style="width:100%;font-family:monospace;font-size:12.5px"></textarea>
+      <div id="colarOCRErro" style="display:none;color:var(--perigo,#b23);font-size:12.5px;margin-top:6px"></div>
+      <div class="acoes" style="margin-top:10px">
+        <button type="button" class="btn" onclick="confirmaColarOCR()">Carregar na fila</button>
+        <button type="button" class="btn mini sec" onclick="colaDaAreaTransferencia()">Colar da área de transferência</button>
+        <button type="button" class="btn mini sec" onclick="$('colarOCRTexto').value=''">Limpar</button>
+      </div>
+    </div>
+  </div>
 </main>
 
 
@@ -1695,6 +1716,65 @@ function salvaFilaOCR() {
 function abreInputFilaOCR() {
   $('inputFilaOCR').value = '';
   $('inputFilaOCR').click();
+}
+
+/* ===== COLAR OCR =====
+   Atalho para o fluxo do arquivo .txt: em vez de salvar o JSON do OCR num bloco de
+   notas e depois subir o arquivo, o texto é colado direto aqui e vira um "arquivo"
+   em memória, que segue exatamente pelo mesmo caminho de carregaFilaOCR(). */
+function abreColarOCR() {
+  $('colarOCRErro').style.display = 'none';
+  $('colarOCRTexto').value = '';
+  $('colarOCRModal').style.display = 'flex';
+  $('colarOCRTexto').focus();
+  colaDaAreaTransferencia();   // tenta preencher sozinho; se o navegador negar, cola na mão
+}
+
+function fechaColarOCR() { $('colarOCRModal').style.display = 'none'; }
+
+async function colaDaAreaTransferencia() {
+  try {
+    const t = await navigator.clipboard.readText();
+    if (t && t.trim()) $('colarOCRTexto').value = t;
+  } catch (e) { /* sem permissão de clipboard — o usuário cola com Ctrl+V */ }
+}
+
+/* Nome estável derivado das OCs do conteúdo, para que colar duas vezes o mesmo
+   pedido não duplique os itens na fila. */
+function nomeArquivoColado(parsed) {
+  const ocs = [];
+  if (Array.isArray(parsed)) {
+    for (const o of parsed) {
+      const oc = String((o && o.OC) || '').trim();
+      if (oc && !ocs.includes(oc)) ocs.push(oc);
+    }
+  }
+  return ocs.length ? `Colado ${ocs.join('-')}.json` : `Colado ${Date.now()}.json`;
+}
+
+async function confirmaColarOCR() {
+  const err = $('colarOCRErro');
+  const bruto = ($('colarOCRTexto').value || '').trim();
+  if (!bruto) { err.textContent = 'Cole o texto do OCR primeiro.'; err.style.display = ''; return; }
+
+  const limpo  = bruto.replace(/^```[a-z]*\s*/i, '').replace(/```\s*$/, '').trim();
+  const parsed = parseJSONTolerante(limpo);
+  if (!parsed) {
+    err.textContent = 'Não consegui ler um JSON válido nesse texto. Confira se copiou o conteúdo todo.';
+    err.style.display = '';
+    return;
+  }
+
+  const nome = nomeArquivoColado(parsed);
+  if (filaOCR.some(x => x.nome === nome || x.origemArquivo === nome)) {
+    err.textContent = 'Esse pedido já está na fila.';
+    err.style.display = '';
+    return;
+  }
+
+  const arquivo = new File([limpo], nome, { type: 'application/json' });
+  fechaColarOCR();
+  await carregaFilaOCR([arquivo]);
 }
 
 function adicionarFila() {
