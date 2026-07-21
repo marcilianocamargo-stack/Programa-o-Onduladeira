@@ -1361,15 +1361,15 @@ function _exportaXLSX(opcoes) {
   const ws2 = XLSX.utils.aoa_to_sheet(aoa2);
   Object.entries(est2).forEach(([ref, s]) => { if (ws2[ref]) ws2[ref].s = s; });
   // Colunas ocultas (dados continuam no arquivo, só não aparecem):
-  // Cliente, Data Pedido, Sliter Vincadeira, m², ML, t/prod, Min prod,
-  // Ponta Refile e Refile. O restante fica visível (Seq.Prod, P.O., Qtde.
-  // Prod., OP, OC, Qtde Pedido, largura, comprimento, kg, Arranjo, Formato
+  // Cliente, Data Pedido, m², ML, t/prod, Min prod, Ponta Refile e Refile.
+  // O restante fica visível (Seq.Prod, P.O., Qtde. Prod., OP, OC, Qtde
+  // Pedido, largura, comprimento, Sliter Vincadeira, kg, Arranjo, Formato
   // bobinas, Largura util, Capa Forradeira, MB, CIB, MC, CIC, Palete Qtde,
   // Palete medida).
   ws2['!cols'] = [
     {wch:9},{wch:20,hidden:true},{wch:7},{wch:11,hidden:true},{wch:10},
     {wch:8},{wch:7},{wch:10},{wch:9},{wch:13},
-    {wch:22,hidden:true},{wch:9,hidden:true},{wch:8,hidden:true},{wch:9,hidden:true},{wch:9,hidden:true},{wch:8},
+    {wch:22},{wch:9,hidden:true},{wch:8,hidden:true},{wch:9,hidden:true},{wch:9,hidden:true},{wch:8},
     {wch:8},{wch:13},{wch:11},{wch:11,hidden:true},{wch:8,hidden:true},
     {wch:11},{wch:11},{wch:11},{wch:11},{wch:11},
     {wch:10},{wch:16}
