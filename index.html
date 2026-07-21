@@ -1360,19 +1360,27 @@ function _exportaXLSX(opcoes) {
 
   const ws2 = XLSX.utils.aoa_to_sheet(aoa2);
   Object.entries(est2).forEach(([ref, s]) => { if (ws2[ref]) ws2[ref].s = s; });
+  // Colunas ocultas (dados continuam no arquivo, só não aparecem):
+  // Cliente, Data Pedido, Sliter Vincadeira, m², ML, t/prod, Min prod,
+  // Ponta Refile e Refile. O restante fica visível (Seq.Prod, P.O., Qtde.
+  // Prod., OP, OC, Qtde Pedido, largura, comprimento, kg, Arranjo, Formato
+  // bobinas, Largura util, Capa Forradeira, MB, CIB, MC, CIC, Palete Qtde,
+  // Palete medida).
   ws2['!cols'] = [
-    {wch:9},{wch:20},{wch:7},{wch:11},{wch:10},
+    {wch:9},{wch:20,hidden:true},{wch:7},{wch:11,hidden:true},{wch:10},
     {wch:8},{wch:7},{wch:10},{wch:9},{wch:13},
-    {wch:22},{wch:9},{wch:8},{wch:9},{wch:9},{wch:8},
-    {wch:8},{wch:13},{wch:11},{wch:11},{wch:8},
+    {wch:22,hidden:true},{wch:9,hidden:true},{wch:8,hidden:true},{wch:9,hidden:true},{wch:9,hidden:true},{wch:8},
+    {wch:8},{wch:13},{wch:11},{wch:11,hidden:true},{wch:8,hidden:true},
     {wch:11},{wch:11},{wch:11},{wch:11},{wch:11},
     {wch:10},{wch:16}
   ];
   ws2['!merges'] = merges2;
   ws2['!rows'] = [{ hpt:18 }, { hpt:30 }];
-  XLSX.utils.book_append_sheet(wb, ws2, sheetSafe(clientesStr));
+  // Nome do documento e da aba = cliente + número da OF (ex.: "ABAPEL 1417")
+  const nomeOF = clientesStr + (db.ofAtual ? ' ' + db.ofAtual : '');
+  XLSX.utils.book_append_sheet(wb, ws2, sheetSafe(nomeOF));
 
-  const nome = fileSafe(clientesStr) + '_' + new Date().toISOString().slice(0, 10) + '.xlsx';
+  const nome = fileSafe(nomeOF) + '.xlsx';
   const dados = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
   const blob = new Blob([dados], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
   const file = new File([blob], nome, { type: blob.type });
