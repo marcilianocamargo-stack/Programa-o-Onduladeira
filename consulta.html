@@ -293,6 +293,7 @@ function extraiLinhasProducaoXLSX(sheet, arquivo) {
   }
   if (hIdx < 0) return [];
   const colQtde = colMap['QTDE PEDIDO'] != null ? colMap['QTDE PEDIDO'] : colMap['QTDE'];
+  const colProduzido = colMap['PRODUZIDO'] != null ? colMap['PRODUZIDO'] : colMap['PRODUZID'];
   const dataArquivo = dataDoNomeArquivo(arquivo);
   const linhas = [];
   for (let i = hIdx + 1; i < aoa.length; i++) {
@@ -308,6 +309,7 @@ function extraiLinhasProducaoXLSX(sheet, arquivo) {
       data: dataArquivo,
       largMM: med.largMM, comprMM: med.comprMM,
       qtde: +row[colQtde] || 0,
+      produzido: colProduzido != null ? (+row[colProduzido] || 0) : null,
       arquivo, status: 'produzido'
     });
   }
@@ -367,12 +369,14 @@ async function extraiLinhasProducaoPDF(buf, arquivo) {
       if (!cliente || !op) continue;
       const med = parseMedida(porColuna['MEDIDA']);
       if (!med) continue;
+      const produzidoTxt = porColuna['PRODUZIDO'] || porColuna['PRODUZID'];
       linhas.push({
         cliente,
         oc: (porColuna['OC'] || '').trim(),
         data: dataArquivo,
         largMM: med.largMM, comprMM: med.comprMM,
         qtde: parseInt(String(porColuna['QTDE PEDIDO'] || porColuna['QTDE'] || '').replace(/\D/g, ''), 10) || 0,
+        produzido: produzidoTxt != null ? (parseInt(String(produzidoTxt).replace(/\D/g, ''), 10) || 0) : null,
         arquivo, status: 'produzido'
       });
     }
@@ -530,9 +534,12 @@ function buscar(ev) {
 }
 
 function linhaItem(l) {
+  const qtdeTxt = l.produzido != null
+    ? l.qtde + ' pedidas · ' + l.produzido + ' produzidas'
+    : l.qtde + ' chapas';
   return '<div class="itemAchado"><b>' + l.cliente + '</b>' +
     '<span>' + (l.oc ? 'OC ' + l.oc + ' · ' : '') +
-    l.largMM + '×' + l.comprMM + ' mm · ' + l.qtde + ' chapas' +
+    l.largMM + '×' + l.comprMM + ' mm · ' + qtdeTxt +
     (l.data ? ' · ' + l.data : '') + ' · <i>' + l.arquivo + '</i></span></div>';
 }
 

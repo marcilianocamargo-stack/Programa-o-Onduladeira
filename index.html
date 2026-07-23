@@ -2452,6 +2452,7 @@ function extraiLinhasProducaoXLSX(sheet, arquivo) {
   }
   if (hIdx < 0) return [];
   const colQtde = colMap['QTDE PEDIDO'] != null ? colMap['QTDE PEDIDO'] : colMap['QTDE'];
+  const colProduzido = colMap['PRODUZIDO'] != null ? colMap['PRODUZIDO'] : colMap['PRODUZID'];
   const dataArquivo = dataDoNomeArquivo(arquivo);
   const linhas = [];
   for (let i = hIdx + 1; i < aoa.length; i++) {
@@ -2467,6 +2468,7 @@ function extraiLinhasProducaoXLSX(sheet, arquivo) {
       data: dataArquivo,
       largMM: med.largMM, comprMM: med.comprMM,
       qtde: +row[colQtde] || 0,
+      produzido: colProduzido != null ? (+row[colProduzido] || 0) : null,
       arquivo
     });
   }
@@ -2534,12 +2536,14 @@ async function extraiLinhasProducaoPDF(buf, arquivo) {
       if (!cliente || !op) continue;
       const med = parseMedida(porColuna['MEDIDA']);
       if (!med) continue;
+      const produzidoTxt = porColuna['PRODUZIDO'] || porColuna['PRODUZID'];
       linhas.push({
         cliente,
         oc: (porColuna['OC'] || '').trim(),
         data: dataArquivo,
         largMM: med.largMM, comprMM: med.comprMM,
         qtde: parseInt(String(porColuna['QTDE PEDIDO'] || porColuna['QTDE'] || '').replace(/\D/g, ''), 10) || 0,
+        produzido: produzidoTxt != null ? (parseInt(String(produzidoTxt).replace(/\D/g, ''), 10) || 0) : null,
         arquivo
       });
     }
@@ -2657,6 +2661,7 @@ function verificaDuplicidade() {
     ? '<div class="aviso ruim">🚨 <b>' + (jaProduzido ? 'OC já produzida' : 'OC já está na programação (ainda não produzida)') + '</b> — ' +
       achado.cliente +
       (achado.oc ? ', OC ' + achado.oc : ' (sem OC, medida/qtde iguais)') +
+      (jaProduzido ? ', ' + achado.qtde + ' pedidas · ' + (achado.produzido != null ? achado.produzido : '—') + ' produzidas' : '') +
       (achado.data ? ', ' + (jaProduzido ? 'relatório de ' : 'pedido de ') + achado.data : '') +
       '. Encontrado em <b>' + achado.arquivo + '</b>. Confira antes de lançar de novo.</div>'
     : '';
