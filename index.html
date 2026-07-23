@@ -11,6 +11,7 @@
 <script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <style>
 :root{
   --papel:#eef2f7; --cartao:#ffffff; --tinta:#0f1e2e; --tinta2:#51637a;
@@ -2175,14 +2176,21 @@ function fechaFila() {
   try { localStorage.removeItem(FILA_KEY2); } catch(e) {}
 }
 
-/* ===== DUPLICIDADE — conecta a pasta "produção produzida" (onde os Excel já
-   exportados por este app ficam salvos) pra avisar se uma OC/pedido já foi
-   lançado antes. Usa a File System Access API do Chrome/Edge (desktop) — só
-   funciona nesses navegadores; em outros o app segue funcionando normal, sem
-   o aviso automático.
+/* ===== DUPLICIDADE — conecta a pasta "produção produzida" (relatórios de
+   produção da fábrica, gerados por outro sistema — NÃO são o Excel que este
+   app exporta) pra avisar se uma OC/pedido já foi lançado antes.
+   Formato desses relatórios (Excel com abas "Produção"/"Resumo", ou PDF —
+   mesma tabela nos dois): colunas OP · OC · OF · CLIENTE · PAPEL · MEDIDA
+   ("0,737 X 1,846", em metros) · QTDE PEDIDO · (PRODUZIDO/PALETES/SALDO/% no
+   Resumo, ou PALETE Nº/CHAPAS/DATA/HORA/RESULTADO no detalhe por palete).
+   O turno da noite só manda em PDF — por isso o app lê os dois formatos.
+   Usa a File System Access API do Chrome/Edge (desktop) — só funciona nesses
+   navegadores; em outros o app segue funcionando normal, sem o aviso automático.
    Regra: se o pedido tem OC, procura Cliente+OC iguais no histórico (mostra
-   a data encontrada pra conferência). Sem OC, procura pelo mesmo Cliente +
-   Largura + Comprimento + Quantidade. */
+   a data do arquivo pra conferência). Sem OC, procura pelo mesmo Cliente +
+   Largura + Comprimento + Quantidade. Cliente é comparado por "contém" (não
+   exato) porque esses relatórios às vezes abreviam o nome (ex.: "PCBOX" em
+   vez de "PCBOX EMBALAGENS LTDA"). */
 let dirHandleProducao = null;
 let indiceProducao = null;   // [{cliente, oc, data, largMM, comprMM, qtde, arquivo}]
 
@@ -2257,57 +2265,175 @@ async function escaneiaPastaProducao() {
   try {
     for await (const [nome, entry] of dirHandleProducao.entries()) {
       if (entry.kind !== 'file') continue;
-      if (!/\.xlsx$/i.test(nome) || nome.startsWith('~$')) continue; // ignora temporários do Excel
+      if (nome.startsWith('~$')) continue; // ignora temporários do Excel
       try {
-        const file = await entry.getFile();
-        const buf = await file.arrayBuffer();
-        const wb = XLSX.read(buf, { type: 'array' });
-        wb.SheetNames.forEach(sn => {
-          extraiLinhasProducao(wb.Sheets[sn], nome).forEach(l => linhas.push(l));
-        });
-      } catch (e) { /* arquivo corrompido ou aberto no Excel — ignora e segue */ }
+        if (/\.xlsx$/i.test(nome)) {
+          const file = await entry.getFile();
+          const buf = await file.arrayBuffer();
+          const wb = XLSX.read(buf, { type: 'array' });
+          wb.SheetNames.forEach(sn => {
+            extraiLinhasProducaoXLSX(wb.Sheets[sn], nome).forEach(l => linhas.push(l));
+          });
+        } else if (/\.pdf$/i.test(nome)) {
+          const file = await entry.getFile();
+          const buf = await file.arrayBuffer();
+          (await extraiLinhasProducaoPDF(buf, nome)).forEach(l => linhas.push(l));
+        }
+      } catch (e) { /* arquivo corrompido, aberto no Excel, PDF ilegível — ignora e segue */ }
     }
   } catch (e) { /* permissão perdida etc. */ }
   indiceProducao = linhas;
 }
 
-/* Lê uma aba no formato de "Excel por Bobina"/"Excel por OC" deste app. Acha
-   a linha de cabeçalho procurando por Cliente/OC/Data Pedido em vez de fixar
-   posição de coluna, pra não quebrar se o layout do Excel mudar no futuro. */
-function extraiLinhasProducao(sheet, arquivo) {
+/* Data do relatório vem do nome do arquivo ("Producao_23-07-2026_...") — é a
+   data do turno/produção, não a "data do pedido" (esses relatórios não têm
+   essa informação); serve só de referência pro operador conferir no aviso. */
+function dataDoNomeArquivo(nome) {
+  const m = String(nome || '').match(/(\d{2})-(\d{2})-(\d{4})/);
+  return m ? (m[1] + '/' + m[2] + '/' + m[3]) : '';
+}
+
+/* "0,737 X 1,846" (metros, vírgula decimal) → { largMM, comprMM } */
+function parseMedida(s) {
+  const m = String(s || '').trim().match(/^(\d+(?:[.,]\d+)?)\s*[x×X]\s*(\d+(?:[.,]\d+)?)$/);
+  if (!m) return null;
+  const a = parseFloat(m[1].replace(',', '.'));
+  const b = parseFloat(m[2].replace(',', '.'));
+  if (!a || !b) return null;
+  return { largMM: Math.round(a * 1000), comprMM: Math.round(b * 1000) };
+}
+
+/* Assinatura da tabela "Resumo" (uma linha por OP/pedido). Inclui SALDO de
+   propósito: a tabela "Produção" (detalhe por palete, uma linha por palete
+   produzido) tem as mesmas colunas OP/OC/OF/CLIENTE/MEDIDA mas não tem SALDO
+   — sem essa exigência, cada pedido entraria no índice repetido uma vez por
+   palete (até 20+ vezes), inflando a lista à toa. */
+const COLS_PRODUCAO = ['OP', 'OC', 'OF', 'CLIENTE', 'MEDIDA', 'SALDO'];
+
+/* Lê os relatórios de produção da fábrica (.xlsx, abas "Produção" e/ou
+   "Resumo") — acha a linha de cabeçalho procurando OP/OC/OF/Cliente/Medida
+   em vez de fixar posição de coluna, pra não quebrar se o layout mudar. */
+function extraiLinhasProducaoXLSX(sheet, arquivo) {
   const aoa = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: true, defval: '' });
   let hIdx = -1, colMap = {};
   for (let i = 0; i < aoa.length; i++) {
-    const row = aoa[i].map(c => String(c == null ? '' : c).trim());
-    if (row.includes('Cliente') && row.includes('OC') && row.includes('Data Pedido')) {
+    const row = aoa[i].map(c => String(c == null ? '' : c).trim().toUpperCase());
+    if (COLS_PRODUCAO.every(k => row.includes(k))) {
       hIdx = i;
-      row.forEach((v, ci) => { if (v && colMap[v] == null) colMap[v] = ci; });
+      aoa[i].forEach((v, ci) => {
+        const k = String(v == null ? '' : v).trim().toUpperCase();
+        if (k && colMap[k] == null) colMap[k] = ci;
+      });
       break;
     }
   }
   if (hIdx < 0) return [];
+  const colQtde = colMap['QTDE PEDIDO'] != null ? colMap['QTDE PEDIDO'] : colMap['QTDE'];
+  const dataArquivo = dataDoNomeArquivo(arquivo);
   const linhas = [];
   for (let i = hIdx + 1; i < aoa.length; i++) {
     const row = aoa[i];
-    const cliente = String(row[colMap['Cliente']] == null ? '' : row[colMap['Cliente']]).trim();
-    if (!cliente) continue;
-    const larg  = +row[colMap['largura']] || 0;
-    const compr = +row[colMap['comprimento (facão)']] || 0;
+    const cliente = String(row[colMap['CLIENTE']] == null ? '' : row[colMap['CLIENTE']]).trim();
+    const op = String(row[colMap['OP']] == null ? '' : row[colMap['OP']]).trim();
+    if (!cliente || !op) continue;
+    const med = parseMedida(row[colMap['MEDIDA']]);
+    if (!med) continue;
     linhas.push({
       cliente,
       oc: String(row[colMap['OC']] == null ? '' : row[colMap['OC']]).trim(),
-      data: String(row[colMap['Data Pedido']] == null ? '' : row[colMap['Data Pedido']]).trim(),
-      largMM: Math.round(larg * 1000),
-      comprMM: Math.round(compr * 1000),
-      qtde: +row[colMap['Qtde Pedido']] || 0,
+      data: dataArquivo,
+      largMM: med.largMM, comprMM: med.comprMM,
+      qtde: +row[colQtde] || 0,
       arquivo
     });
   }
   return linhas;
 }
 
+/* Lê os mesmos relatórios em PDF (o turno da noite só manda nesse formato).
+   pdf.js devolve cada célula da tabela como um "item" de texto com posição
+   x/y — a tabela é reconstruída agrupando itens por linha (mesma altura) e
+   depois encaixando cada item na coluna cujo início de cabeçalho (x) é o
+   maior valor ainda menor ou igual ao x do item (não por texto de coluna
+   fixo, pra não quebrar se a largura das colunas mudar). */
+async function extraiLinhasProducaoPDF(buf, arquivo) {
+  const doc = await pdfjsLib.getDocument({ data: buf }).promise;
+  const dataArquivo = dataDoNomeArquivo(arquivo);
+  const linhas = [];
+  for (let p = 1; p <= doc.numPages; p++) {
+    const page = await doc.getPage(p);
+    const tc = await page.getTextContent();
+
+    const linhasPagina = [];
+    tc.items.forEach(it => {
+      const texto = (it.str || '').trim();
+      if (!texto) return;
+      const y = it.transform[5], x = it.transform[4];
+      let linha = linhasPagina.find(l => Math.abs(l.y - y) < 1.5);
+      if (!linha) { linha = { y, itens: [] }; linhasPagina.push(linha); }
+      linha.itens.push({ x, texto });
+    });
+    linhasPagina.forEach(l => l.itens.sort((a, b) => a.x - b.x));
+    linhasPagina.sort((a, b) => b.y - a.y); // topo → fim da página
+
+    let cols = null; // [{x, nome}], null = ainda não achou a tabela nesta página
+    for (const linha of linhasPagina) {
+      const its = linha.itens;
+      const textosUpper = its.map(i => i.texto.toUpperCase());
+
+      if (COLS_PRODUCAO.every(k => textosUpper.includes(k))) {
+        cols = [];
+        for (let i = 0; i < its.length; i++) {
+          const nome = its[i].texto.toUpperCase();
+          if (nome === 'QTDE' && its[i + 1] && its[i + 1].texto.toUpperCase() === 'PEDIDO') {
+            cols.push({ x: its[i].x, nome: 'QTDE PEDIDO' });
+            i++; // já consumiu o "PEDIDO" junto
+          } else {
+            cols.push({ x: its[i].x, nome });
+          }
+        }
+        continue;
+      }
+      if (!cols) continue;
+
+      // fim da tabela (linha de total ou início da próxima seção do relatório)
+      if (textosUpper.some(t => t.includes('RESUMO') || t.startsWith('TOTAL'))) { cols = null; continue; }
+
+      const porColuna = {};
+      its.forEach(item => {
+        let alvo = cols[0];
+        for (const c of cols) { if (c.x <= item.x + 0.5) alvo = c; else break; }
+        porColuna[alvo.nome] = (porColuna[alvo.nome] ? porColuna[alvo.nome] + ' ' : '') + item.texto;
+      });
+
+      const cliente = (porColuna['CLIENTE'] || '').trim();
+      const op = (porColuna['OP'] || '').trim();
+      if (!cliente || !op) continue;
+      const med = parseMedida(porColuna['MEDIDA']);
+      if (!med) continue;
+      linhas.push({
+        cliente,
+        oc: (porColuna['OC'] || '').trim(),
+        data: dataArquivo,
+        largMM: med.largMM, comprMM: med.comprMM,
+        qtde: parseInt(String(porColuna['QTDE PEDIDO'] || porColuna['QTDE'] || '').replace(/\D/g, ''), 10) || 0,
+        arquivo
+      });
+    }
+  }
+  return linhas;
+}
+
 const normTxtDup = s => String(s || '').trim().toUpperCase().replace(/\s+/g, ' ');
 const normOC = s => String(s || '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+/* Compara cliente por "contém" (não por igualdade exata): esses relatórios
+   às vezes abreviam o nome do cliente (ex.: "PCBOX" em vez de "PCBOX
+   EMBALAGENS LTDA"), então igualdade exata deixaria passar duplicidade real. */
+function clienteBate(a, b) {
+  const x = normTxtDup(a), y = normTxtDup(b);
+  if (x.length < 3 || y.length < 3) return x === y;
+  return x === y || x.includes(y) || y.includes(x);
+}
 
 function atualizaChipDuplicidade() {
   const chip = $('dupChip'), btn = $('dupBtnAtualizar');
@@ -2345,25 +2471,25 @@ function verificaDuplicidade() {
   if (!el) return;
   if (!indiceProducao || !indiceProducao.length) { el.innerHTML = ''; return; }
 
-  const cliente = normTxtDup($('fCliente').value);
+  const clienteForm = $('fCliente').value;
   const oc = normOC($('fOC').value);
   const larg = +$('fLarg').value || 0;
   const compr = +$('fCompr').value || 0;
   const qtde = +$('fQtde').value || 0;
-  if (!cliente) { el.innerHTML = ''; return; }
+  if (!clienteForm.trim()) { el.innerHTML = ''; return; }
 
   let achado = null;
   if (oc) {
-    achado = indiceProducao.find(l => normOC(l.oc) === oc && normTxtDup(l.cliente) === cliente);
+    achado = indiceProducao.find(l => normOC(l.oc) === oc && clienteBate(l.cliente, clienteForm));
   } else if (larg && compr && qtde) {
-    achado = indiceProducao.find(l => normTxtDup(l.cliente) === cliente &&
+    achado = indiceProducao.find(l => clienteBate(l.cliente, clienteForm) &&
       l.largMM === larg && l.comprMM === compr && l.qtde === qtde);
   }
 
   el.innerHTML = achado
     ? '<div class="aviso ruim">🚨 <b>OC já produzida</b> — ' + achado.cliente +
       (achado.oc ? ', OC ' + achado.oc : ' (sem OC, medida/qtde iguais)') +
-      (achado.data ? ', pedido de ' + achado.data : '') +
+      (achado.data ? ', relatório de ' + achado.data : '') +
       '. Encontrado em <b>' + achado.arquivo + '</b>. Confira antes de lançar de novo.</div>'
     : '';
 }
