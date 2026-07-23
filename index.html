@@ -223,9 +223,13 @@ details .corpo{padding:10px 0}
           <div><label>OC (ordem de compra)</label><input id="fOC" autocomplete="off" placeholder="—" oninput="verificaDuplicidade()"></div>
         </div>
         <div class="nota" id="ofCentralView"></div>
-        <div id="dupStatusRow" style="display:flex;align-items:center;gap:8px;margin:2px 0 6px;flex-wrap:wrap">
+        <div id="dupStatusRow" style="display:flex;align-items:center;gap:8px;margin:2px 0 4px;flex-wrap:wrap">
           <span id="dupChip" class="fila-chip" onclick="conectaPastaProducao()">🔗 Conectar pasta de produção</span>
           <button type="button" id="dupBtnAtualizar" class="btn mini sec" style="display:none" onclick="atualizaIndiceDuplicidade()">🔄 Atualizar</button>
+        </div>
+        <div id="dupStatusRowFila" style="display:flex;align-items:center;gap:8px;margin:2px 0 6px;flex-wrap:wrap">
+          <span id="dupChipFila" class="fila-chip" onclick="conectaPastaFila()">🔗 Conectar pasta de programação (fila)</span>
+          <button type="button" id="dupBtnAtualizarFila" class="btn mini sec" style="display:none" onclick="atualizaIndiceFila()">🔄 Atualizar</button>
         </div>
         <div id="avisoDuplicidade"></div>
         <label>Cliente</label>
@@ -2190,11 +2194,22 @@ function fechaFila() {
    a data do arquivo pra conferência). Sem OC, procura pelo mesmo Cliente +
    Largura + Comprimento + Quantidade. Cliente é comparado por "contém" (não
    exato) porque esses relatórios às vezes abreviam o nome (ex.: "PCBOX" em
-   vez de "PCBOX EMBALAGENS LTDA"). */
-let dirHandleProducao = null;
-let indiceProducao = null;   // [{cliente, oc, data, largMM, comprMM, qtde, arquivo}]
+   vez de "PCBOX EMBALAGENS LTDA").
 
-const DUP_DB_NAME = 'prime_dup_v1', DUP_STORE = 'handles', DUP_KEY = 'pastaProducao';
+   Segunda fonte: a pasta de PROGRAMAÇÃO (fila pendente, ainda não produzida
+   — ex.: "G:\Meu Drive\Prime\Produção\programação\programacao-hoje.xlsx").
+   Esse arquivo É gerado por este mesmo app (é a mesma planilha do botão
+   "Excel por Bobina", só que consolidada em várias abas, uma por OF) — sem
+   ele, um pedido que já está na fila mas ainda não foi pra máquina não gera
+   alerta nenhum, porque só aparece nos relatórios de "produção produzida"
+   depois de ser fabricado. */
+let dirHandleProducao = null;
+let indiceProducao = null;   // [{cliente, oc, data, largMM, comprMM, qtde, arquivo}] — já produzido
+let dirHandleFila = null;
+let indiceFila = null;       // mesma forma — na fila, ainda não produzido
+
+const DUP_DB_NAME = 'prime_dup_v1', DUP_STORE = 'handles';
+const DUP_KEY = 'pastaProducao', DUP_KEY_FILA = 'pastaFila';
 
 function dupDB() {
   return new Promise((res, rej) => {
@@ -2204,22 +2219,22 @@ function dupDB() {
     r.onerror = () => rej(r.error);
   });
 }
-async function salvaHandleProducao(handle) {
+async function salvaHandle(key, handle) {
   try {
     const db2 = await dupDB();
     await new Promise((res, rej) => {
       const tx = db2.transaction(DUP_STORE, 'readwrite');
-      tx.objectStore(DUP_STORE).put(handle, DUP_KEY);
+      tx.objectStore(DUP_STORE).put(handle, key);
       tx.oncomplete = res; tx.onerror = () => rej(tx.error);
     });
   } catch (e) {}
 }
-async function carregaHandleProducao() {
+async function carregaHandle(key) {
   try {
     const db2 = await dupDB();
     return await new Promise((res, rej) => {
       const tx = db2.transaction(DUP_STORE, 'readonly');
-      const rq = tx.objectStore(DUP_STORE).get(DUP_KEY);
+      const rq = tx.objectStore(DUP_STORE).get(key);
       rq.onsuccess = () => res(rq.result || null);
       rq.onerror = () => rej(rq.error);
     });
@@ -2234,7 +2249,7 @@ async function conectaPastaProducao() {
   try {
     const handle = await window.showDirectoryPicker();
     dirHandleProducao = handle;
-    await salvaHandleProducao(handle);
+    await salvaHandle(DUP_KEY, handle);
     const chip = $('dupChip');
     if (chip) chip.textContent = 'Lendo pasta...';
     await escaneiaPastaProducao();
@@ -2247,7 +2262,7 @@ async function conectaPastaProducao() {
    — só funciona se o navegador ainda tiver a permissão concedida (pode
    expirar; nesse caso o operador clica em "Conectar pasta" outra vez). */
 async function tentaReconectarPastaProducao() {
-  const handle = await carregaHandleProducao();
+  const handle = await carregaHandle(DUP_KEY);
   if (!handle) { atualizaChipDuplicidade(); return; }
   try {
     const perm = await handle.queryPermission({ mode: 'read' });
@@ -2257,6 +2272,36 @@ async function tentaReconectarPastaProducao() {
     }
   } catch (e) {}
   atualizaChipDuplicidade();
+}
+
+async function conectaPastaFila() {
+  if (!window.showDirectoryPicker) {
+    alert('Este navegador não permite conectar pastas do computador — funciona no Chrome ou Edge, no PC.');
+    return;
+  }
+  try {
+    const handle = await window.showDirectoryPicker();
+    dirHandleFila = handle;
+    await salvaHandle(DUP_KEY_FILA, handle);
+    const chip = $('dupChipFila');
+    if (chip) chip.textContent = 'Lendo pasta...';
+    await escaneiaPastaFila();
+  } catch (e) { /* usuário cancelou a escolha da pasta */ }
+  atualizaChipFila();
+  verificaDuplicidade();
+}
+
+async function tentaReconectarPastaFila() {
+  const handle = await carregaHandle(DUP_KEY_FILA);
+  if (!handle) { atualizaChipFila(); return; }
+  try {
+    const perm = await handle.queryPermission({ mode: 'read' });
+    if (perm === 'granted') {
+      dirHandleFila = handle;
+      await escaneiaPastaFila();
+    }
+  } catch (e) {}
+  atualizaChipFila();
 }
 
 async function escaneiaPastaProducao() {
@@ -2283,6 +2328,81 @@ async function escaneiaPastaProducao() {
     }
   } catch (e) { /* permissão perdida etc. */ }
   indiceProducao = linhas;
+}
+
+async function escaneiaPastaFila() {
+  if (!dirHandleFila) return;
+  const linhas = [];
+  try {
+    for await (const [nome, entry] of dirHandleFila.entries()) {
+      if (entry.kind !== 'file') continue;
+      if (nome.startsWith('~$') || !/\.xlsx$/i.test(nome)) continue; // só .xlsx — esse arquivo é gerado por este app
+      try {
+        const file = await entry.getFile();
+        const buf = await file.arrayBuffer();
+        const wb = XLSX.read(buf, { type: 'array' });
+        wb.SheetNames.forEach(sn => {
+          extraiLinhasFilaXLSX(wb.Sheets[sn], nome).forEach(l => linhas.push(l));
+        });
+      } catch (e) { /* arquivo corrompido ou aberto no Excel — ignora e segue */ }
+    }
+  } catch (e) { /* permissão perdida etc. */ }
+  indiceFila = linhas;
+}
+
+/* Assinatura das planilhas geradas pelo botão "Excel por Bobina"/"Excel por
+   OC" deste app — é o formato do arquivo de programação/fila pendente. Não
+   tem coluna "OF" separada (o número de OF fica só no título da aba), então
+   não colide com a assinatura de COLS_PRODUCAO (que exige OF+SALDO). */
+const COLS_FILA = ['CLIENTE', 'OC', 'DATA PEDIDO', 'QTDE PEDIDO'];
+
+/* "Data Pedido" normalmente vem como texto "dd/mm/aaaa" (é assim que este
+   app grava), mas se alguém editar a planilha manualmente no Excel a célula
+   pode virar data de verdade (número de série, ex.: 46218) — sem isso a
+   coluna mostraria esse número cru no aviso em vez da data. */
+function dataCelula(v) {
+  if (v == null || v === '') return '';
+  if (typeof v === 'number') {
+    try { return XLSX.SSF.format('dd/mm/yyyy', v); } catch (e) { return ''; }
+  }
+  return String(v).trim();
+}
+
+function extraiLinhasFilaXLSX(sheet, arquivo) {
+  const aoa = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: true, defval: '' });
+  let hIdx = -1, colMap = {}, colLarg = null, colCompr = null;
+  for (let i = 0; i < aoa.length; i++) {
+    const row = aoa[i].map(c => String(c == null ? '' : c).trim().toUpperCase());
+    if (COLS_FILA.every(k => row.includes(k))) {
+      hIdx = i;
+      aoa[i].forEach((v, ci) => {
+        const k = String(v == null ? '' : v).trim().toUpperCase();
+        if (k && colMap[k] == null) colMap[k] = ci;
+        // "largura"/"comprimento (facão)" — por nome parcial, evita depender do acento exato
+        if (k.startsWith('LARGURA') && colLarg == null) colLarg = ci;
+        if (k.startsWith('COMPRIMENTO') && colCompr == null) colCompr = ci;
+      });
+      break;
+    }
+  }
+  if (hIdx < 0 || colLarg == null || colCompr == null) return [];
+  const linhas = [];
+  for (let i = hIdx + 1; i < aoa.length; i++) {
+    const row = aoa[i];
+    const cliente = String(row[colMap['CLIENTE']] == null ? '' : row[colMap['CLIENTE']]).trim();
+    if (!cliente) continue;
+    const larg = +row[colLarg] || 0, compr = +row[colCompr] || 0;
+    if (!larg || !compr) continue;
+    linhas.push({
+      cliente,
+      oc: String(row[colMap['OC']] == null ? '' : row[colMap['OC']]).trim(),
+      data: dataCelula(row[colMap['DATA PEDIDO']]),
+      largMM: Math.round(larg * 1000), comprMM: Math.round(compr * 1000),
+      qtde: +row[colMap['QTDE PEDIDO']] || 0,
+      arquivo
+    });
+  }
+  return linhas;
 }
 
 /* Data do relatório vem do nome do arquivo ("Producao_23-07-2026_...") — é a
@@ -2463,13 +2583,47 @@ async function atualizaIndiceDuplicidade() {
   verificaDuplicidade();
 }
 
+function atualizaChipFila() {
+  const chip = $('dupChipFila'), btn = $('dupBtnAtualizarFila');
+  if (!chip) return;
+  if (!window.showDirectoryPicker) {
+    chip.textContent = '⚠️ Checagem indisponível neste navegador';
+    chip.className = 'fila-chip pul';
+    if (btn) btn.style.display = 'none';
+    return;
+  }
+  if (dirHandleFila && indiceFila) {
+    chip.textContent = '✓ Programação conectada — ' + indiceFila.length + ' pedidos na fila';
+    chip.className = 'fila-chip ok';
+    if (btn) btn.style.display = '';
+  } else {
+    chip.textContent = '🔗 Conectar pasta de programação (fila)';
+    chip.className = 'fila-chip';
+    if (btn) btn.style.display = 'none';
+  }
+}
+
+async function atualizaIndiceFila() {
+  const chip = $('dupChipFila');
+  if (chip) chip.textContent = 'Atualizando...';
+  await escaneiaPastaFila();
+  atualizaChipFila();
+  verificaDuplicidade();
+}
+
 /* Roda a cada mudança de Cliente/OC/Data/Largura/Comprimento/Quantidade no
    formulário "Nova OF" e mostra o alerta vermelho se achar o mesmo pedido já
-   lançado antes na pasta de produção. */
+   produzido (pasta "produção produzida") OU já lançado na fila mas ainda não
+   produzido (pasta de "programação"). Não roda ao editar uma OF já existente
+   (fEditId preenchido) — senão o pedido acusaria duplicidade dele mesmo. */
 function verificaDuplicidade() {
   const el = $('avisoDuplicidade');
   if (!el) return;
-  if (!indiceProducao || !indiceProducao.length) { el.innerHTML = ''; return; }
+  if ($('fEditId') && $('fEditId').value) { el.innerHTML = ''; return; }
+  if ((!indiceProducao || !indiceProducao.length) && (!indiceFila || !indiceFila.length)) {
+    el.innerHTML = '';
+    return;
+  }
 
   const clienteForm = $('fCliente').value;
   const oc = normOC($('fOC').value);
@@ -2478,18 +2632,23 @@ function verificaDuplicidade() {
   const qtde = +$('fQtde').value || 0;
   if (!clienteForm.trim()) { el.innerHTML = ''; return; }
 
-  let achado = null;
-  if (oc) {
-    achado = indiceProducao.find(l => normOC(l.oc) === oc && clienteBate(l.cliente, clienteForm));
-  } else if (larg && compr && qtde) {
-    achado = indiceProducao.find(l => clienteBate(l.cliente, clienteForm) &&
+  function acha(lista) {
+    if (!lista || !lista.length) return null;
+    if (oc) return lista.find(l => normOC(l.oc) === oc && clienteBate(l.cliente, clienteForm));
+    if (larg && compr && qtde) return lista.find(l => clienteBate(l.cliente, clienteForm) &&
       l.largMM === larg && l.comprMM === compr && l.qtde === qtde);
+    return null;
   }
 
+  const achadoProduzido = acha(indiceProducao);
+  const achado = achadoProduzido || acha(indiceFila);
+  const jaProduzido = !!achadoProduzido;
+
   el.innerHTML = achado
-    ? '<div class="aviso ruim">🚨 <b>OC já produzida</b> — ' + achado.cliente +
+    ? '<div class="aviso ruim">🚨 <b>' + (jaProduzido ? 'OC já produzida' : 'OC já está na programação (ainda não produzida)') + '</b> — ' +
+      achado.cliente +
       (achado.oc ? ', OC ' + achado.oc : ' (sem OC, medida/qtde iguais)') +
-      (achado.data ? ', relatório de ' + achado.data : '') +
+      (achado.data ? ', ' + (jaProduzido ? 'relatório de ' : 'pedido de ') + achado.data : '') +
       '. Encontrado em <b>' + achado.arquivo + '</b>. Confira antes de lançar de novo.</div>'
     : '';
 }
@@ -2501,6 +2660,7 @@ limpaForm();
 desenhaProg();
 trocaAba('prog');
 tentaReconectarPastaProducao();
+tentaReconectarPastaFila();
 if ('serviceWorker' in navigator && location.protocol.startsWith('http'))
   navigator.serviceWorker.register('sw.js').catch(() => {});
 
