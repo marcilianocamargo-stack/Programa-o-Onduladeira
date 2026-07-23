@@ -1,0 +1,534 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0f1e2e">
+<title>Consulta OC — Prime</title>
+<link rel="manifest" href="data:application/manifest+json;base64,eyJuYW1lIjogIkNvbnN1bHRhIE9DIFByaW1lIiwgInNob3J0X25hbWUiOiAiQ29uc3VsdGEgT0MiLCAic3RhcnRfdXJsIjogImNvbnN1bHRhLmh0bWwiLCAiZGlzcGxheSI6ICJzdGFuZGFsb25lIiwgImJhY2tncm91bmRfY29sb3IiOiAiIzBmMWUyZSIsICJ0aGVtZV9jb2xvciI6ICIjMWEzYTVjIiwgImljb25zIjogW3sic3JjIjogImRhdGE6aW1hZ2Uvc3ZnK3htbDtiYXNlNjQsUEhOMlp5QjRiV3h1Y3owaWFIUjBjRG92TDNkM2R5NTNNeTV2Y21jdk1qQXdNQzl6ZG1jaUlIWnBaWGRDYjNnOUlqQWdNQ0F4TURBZ01UQXdJajRLUEhKbFkzUWdkMmxrZEdnOUlqRXdNQ0lnYUdWcFoyaDBQU0l4TURBaUlISjRQU0l4T0NJZ1ptbHNiRDBpSXpCbU1XVXlaU0l2UGdvOGNHRjBhQ0JrUFNKTk1UUWdOakl3Y1RrZ0xURTJJREU0SURBZ2RERTRJREFnZERFNElEQWdkREU0SURBaUlITjBjbTlyWlQwaUl6UmhOMlJpTXlJZ2MzUnliMnRsTFhkcFpIUm9QU0kzSWlCbWFXeHNQU0p1YjI1bElpQnpkSEp2YTJVdGJHbHVaV05oY0QwaWNtOTFibVFpTHo0S1BISmxZM1FnZUQwaU1UUWlJSGs5SWpNMElpQjNhV1IwYUQwaU56SWlJR2hsYVdkb2REMGlOeUlnY25nOUlqTXVOU0lnWm1sc2JEMGlJMlptWm1abVppSXZQZ284Y21WamRDQjRQU0l4TkNJZ2VUMGlOekluIF0sICJzaXplcyI6ICJhbnkiLCAidHlwZSI6ICJpbWFnZS9zdmcreG1sIiwgInB1cnBvc2UiOiAiYW55In1dfQ==">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Barlow:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<style>
+:root{
+  --papel:#eef2f7; --cartao:#ffffff; --tinta:#0f1e2e; --tinta2:#51637a;
+  --kraft:#1a3a5c; --kraft-claro:#dbe7f3; --linha:#ccd8e4;
+  --ok:#2e7d4f; --alerta:#c23b22; --alerta-bg:#fbeae6; --ok-bg:#e8f3ec;
+  --fila:#8a6400; --fila-bg:#fff3cd;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{-webkit-text-size-adjust:100%}
+body{padding-bottom:30px;font-family:'Barlow',system-ui,sans-serif;background:var(--papel);
+  color:var(--tinta);font-size:15px;line-height:1.45}
+h1,h2,h3{font-family:'Barlow Condensed','Barlow',sans-serif}
+header{background:var(--tinta);color:#fff;padding:12px 16px;display:flex;align-items:baseline;
+  justify-content:space-between;gap:8px;position:sticky;top:0;z-index:20}
+header h1{font-size:21px;font-weight:700;letter-spacing:.04em;text-transform:uppercase}
+header h1 small{color:#6ea8dc;font-weight:600}
+header a{color:#9fc4e8;font-size:12.5px;text-decoration:none}
+main{max-width:640px;margin:0 auto;padding:14px 12px 30px}
+.card{background:var(--cartao);border:1px solid var(--linha);border-radius:10px;padding:14px;margin-bottom:12px}
+label{display:block;font-size:12.5px;font-weight:600;color:var(--tinta2);
+  text-transform:uppercase;letter-spacing:.04em;margin:10px 0 3px}
+input{width:100%;padding:9px 10px;border:1px solid var(--linha);border-radius:7px;
+  font:inherit;background:#fff;color:var(--tinta)}
+input:focus{outline:2px solid var(--kraft);outline-offset:0;border-color:var(--kraft)}
+.row{display:flex;gap:10px}.row>*{flex:1;min-width:0}
+.btn{display:inline-block;border:0;border-radius:8px;padding:11px 18px;cursor:pointer;
+  font-family:'Barlow Condensed';font-size:17px;font-weight:600;letter-spacing:.04em;
+  text-transform:uppercase;background:var(--kraft);color:#fff}
+.btn.sec{background:transparent;color:var(--tinta);border:1.5px solid var(--tinta)}
+.btn.mini{padding:6px 12px;font-size:14px}
+.acoes{display:flex;gap:10px;margin-top:14px;flex-wrap:wrap}
+.nota{font-size:12.5px;color:var(--tinta2);margin-top:6px}
+
+.fila-chip{display:inline-flex;align-items:center;gap:4px;padding:4px 8px;cursor:pointer;
+  border-radius:20px;border:1.5px solid var(--linha);background:var(--papel);
+  font-size:10.5px;font-weight:600;white-space:nowrap;transition:all .15s;user-select:none}
+.fila-chip:hover{background:var(--kraft-claro)}
+.fila-chip.ok{border-color:#bcd9c6;background:var(--ok-bg);color:var(--ok)}
+.fila-chip.pul{border-color:#e8b3a8;background:var(--alerta-bg);color:var(--alerta);opacity:.75}
+.statusRow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px}
+
+.resultado{border-radius:10px;padding:14px;margin-top:6px;border:1.5px solid}
+.resultado.produzido{background:var(--ok-bg);border-color:#bcd9c6;color:#1d5436}
+.resultado.fila{background:var(--fila-bg);border-color:#e6cf7a;color:var(--fila)}
+.resultado.nada{background:var(--papel);border-color:var(--linha);color:var(--tinta2)}
+.resultado h3{font-family:'Barlow Condensed';font-size:19px;text-transform:uppercase;letter-spacing:.03em;margin-bottom:6px}
+.itemAchado{background:rgba(255,255,255,.55);border-radius:8px;padding:8px 10px;margin-top:8px;font-size:13.5px}
+.itemAchado b{display:block;font-family:'Barlow Condensed';font-size:15px}
+.itemAchado span{color:var(--tinta2)}
+</style>
+</head>
+<body>
+<header>
+  <h1>Consulta OC <small>· Prime</small></h1>
+  <a href="index.html">← Programação</a>
+</header>
+<main>
+  <div class="card">
+    <p class="nota" style="margin-top:0">Consulta rápida: diz se um pedido já foi <b>produzido</b> ou ainda está <b>na fila de programação</b>, lendo direto das mesmas pastas do computador (nenhum dado fica salvo aqui além da conexão das pastas).</p>
+
+    <div class="statusRow">
+      <span id="dupChip" class="fila-chip" onclick="conectaPastaProducao()">🔗 Conectar pasta "produção produzida"</span>
+      <button type="button" id="dupBtnAtualizar" class="btn mini sec" style="display:none" onclick="atualizaIndiceDuplicidade()">🔄</button>
+    </div>
+    <div class="statusRow">
+      <span id="dupChipFila" class="fila-chip" onclick="conectaPastaFila()">🔗 Conectar pasta "programação" (fila)</span>
+      <button type="button" id="dupBtnAtualizarFila" class="btn mini sec" style="display:none" onclick="atualizaIndiceFila()">🔄</button>
+    </div>
+  </div>
+
+  <form id="formBusca" class="card" onsubmit="return buscar(event)">
+    <label>OC (ordem de compra)</label>
+    <input id="bOC" autocomplete="off" placeholder="ex.: 1518">
+    <label>Cliente</label>
+    <input id="bCliente" autocomplete="off" placeholder="ex.: PCBOX" required>
+    <p class="nota">Sem OC, procura pelo mesmo cliente + largura + comprimento + quantidade abaixo:</p>
+    <div class="row">
+      <div><label>Largura (mm)</label><input id="bLarg" type="number" inputmode="numeric"></div>
+      <div><label>Compr. (mm)</label><input id="bCompr" type="number" inputmode="numeric"></div>
+      <div><label>Qtde</label><input id="bQtde" type="number" inputmode="numeric"></div>
+    </div>
+    <div class="acoes">
+      <button class="btn" type="submit">Buscar</button>
+      <button class="btn sec" type="button" onclick="limpaBusca()">Limpar</button>
+    </div>
+  </form>
+
+  <div id="resultados"></div>
+</main>
+
+<script>
+const $ = id => document.getElementById(id);
+
+/* ===== mesma lógica de conexão/parsing/comparação do app de programação
+   (index.html) — usa o MESMO banco IndexedDB (prime_dup_v1), então se as
+   pastas já foram conectadas por lá, esta página reconecta sozinha, sem
+   pedir de novo (mesma origem = mesma permissão salva). ===== */
+
+let dirHandleProducao = null;
+let indiceProducao = null;   // [{cliente, oc, data, largMM, comprMM, qtde, arquivo, status:'produzido'}]
+let dirHandleFila = null;
+let indiceFila = null;       // mesma forma, status:'fila'
+
+const DUP_DB_NAME = 'prime_dup_v1', DUP_STORE = 'handles';
+const DUP_KEY = 'pastaProducao', DUP_KEY_FILA = 'pastaFila';
+
+function dupDB() {
+  return new Promise((res, rej) => {
+    const r = indexedDB.open(DUP_DB_NAME, 1);
+    r.onupgradeneeded = () => r.result.createObjectStore(DUP_STORE);
+    r.onsuccess = () => res(r.result);
+    r.onerror = () => rej(r.error);
+  });
+}
+async function salvaHandle(key, handle) {
+  try {
+    const db2 = await dupDB();
+    await new Promise((res, rej) => {
+      const tx = db2.transaction(DUP_STORE, 'readwrite');
+      tx.objectStore(DUP_STORE).put(handle, key);
+      tx.oncomplete = res; tx.onerror = () => rej(tx.error);
+    });
+  } catch (e) {}
+}
+async function carregaHandle(key) {
+  try {
+    const db2 = await dupDB();
+    return await new Promise((res, rej) => {
+      const tx = db2.transaction(DUP_STORE, 'readonly');
+      const rq = tx.objectStore(DUP_STORE).get(key);
+      rq.onsuccess = () => res(rq.result || null);
+      rq.onerror = () => rej(rq.error);
+    });
+  } catch (e) { return null; }
+}
+
+async function conectaPastaProducao() {
+  if (!window.showDirectoryPicker) {
+    alert('Este navegador não permite conectar pastas do computador — funciona no Chrome ou Edge, no PC.');
+    return;
+  }
+  try {
+    const handle = await window.showDirectoryPicker();
+    dirHandleProducao = handle;
+    await salvaHandle(DUP_KEY, handle);
+    const chip = $('dupChip');
+    if (chip) chip.textContent = 'Lendo pasta...';
+    await escaneiaPastaProducao();
+  } catch (e) { /* usuário cancelou a escolha da pasta */ }
+  atualizaChipDuplicidade();
+}
+
+async function tentaReconectarPastaProducao() {
+  const handle = await carregaHandle(DUP_KEY);
+  if (!handle) { atualizaChipDuplicidade(); return; }
+  try {
+    const perm = await handle.queryPermission({ mode: 'read' });
+    if (perm === 'granted') {
+      dirHandleProducao = handle;
+      await escaneiaPastaProducao();
+    }
+  } catch (e) {}
+  atualizaChipDuplicidade();
+}
+
+async function conectaPastaFila() {
+  if (!window.showDirectoryPicker) {
+    alert('Este navegador não permite conectar pastas do computador — funciona no Chrome ou Edge, no PC.');
+    return;
+  }
+  try {
+    const handle = await window.showDirectoryPicker();
+    dirHandleFila = handle;
+    await salvaHandle(DUP_KEY_FILA, handle);
+    const chip = $('dupChipFila');
+    if (chip) chip.textContent = 'Lendo pasta...';
+    await escaneiaPastaFila();
+  } catch (e) { /* usuário cancelou a escolha da pasta */ }
+  atualizaChipFila();
+}
+
+async function tentaReconectarPastaFila() {
+  const handle = await carregaHandle(DUP_KEY_FILA);
+  if (!handle) { atualizaChipFila(); return; }
+  try {
+    const perm = await handle.queryPermission({ mode: 'read' });
+    if (perm === 'granted') {
+      dirHandleFila = handle;
+      await escaneiaPastaFila();
+    }
+  } catch (e) {}
+  atualizaChipFila();
+}
+
+async function escaneiaPastaProducao() {
+  if (!dirHandleProducao) return;
+  const linhas = [];
+  try {
+    for await (const [nome, entry] of dirHandleProducao.entries()) {
+      if (entry.kind !== 'file') continue;
+      if (nome.startsWith('~$')) continue; // ignora temporários do Excel
+      try {
+        if (/\.xlsx$/i.test(nome)) {
+          const file = await entry.getFile();
+          const buf = await file.arrayBuffer();
+          const wb = XLSX.read(buf, { type: 'array' });
+          wb.SheetNames.forEach(sn => {
+            extraiLinhasProducaoXLSX(wb.Sheets[sn], nome).forEach(l => linhas.push(l));
+          });
+        } else if (/\.pdf$/i.test(nome)) {
+          const file = await entry.getFile();
+          const buf = await file.arrayBuffer();
+          (await extraiLinhasProducaoPDF(buf, nome)).forEach(l => linhas.push(l));
+        }
+      } catch (e) { /* arquivo corrompido, aberto no Excel, PDF ilegível — ignora e segue */ }
+    }
+  } catch (e) { /* permissão perdida etc. */ }
+  indiceProducao = linhas;
+}
+
+async function escaneiaPastaFila() {
+  if (!dirHandleFila) return;
+  const linhas = [];
+  try {
+    for await (const [nome, entry] of dirHandleFila.entries()) {
+      if (entry.kind !== 'file') continue;
+      if (nome.startsWith('~$') || !/\.xlsx$/i.test(nome)) continue; // só .xlsx — arquivo gerado pelo app de programação
+      try {
+        const file = await entry.getFile();
+        const buf = await file.arrayBuffer();
+        const wb = XLSX.read(buf, { type: 'array' });
+        wb.SheetNames.forEach(sn => {
+          extraiLinhasFilaXLSX(wb.Sheets[sn], nome).forEach(l => linhas.push(l));
+        });
+      } catch (e) { /* arquivo corrompido ou aberto no Excel — ignora e segue */ }
+    }
+  } catch (e) { /* permissão perdida etc. */ }
+  indiceFila = linhas;
+}
+
+function dataDoNomeArquivo(nome) {
+  const m = String(nome || '').match(/(\d{2})-(\d{2})-(\d{4})/);
+  return m ? (m[1] + '/' + m[2] + '/' + m[3]) : '';
+}
+
+function dataCelula(v) {
+  if (v == null || v === '') return '';
+  if (typeof v === 'number') {
+    try { return XLSX.SSF.format('dd/mm/yyyy', v); } catch (e) { return ''; }
+  }
+  return String(v).trim();
+}
+
+/* "0,737 X 1,846" (metros, vírgula decimal) → { largMM, comprMM } */
+function parseMedida(s) {
+  const m = String(s || '').trim().match(/^(\d+(?:[.,]\d+)?)\s*[x×X]\s*(\d+(?:[.,]\d+)?)$/);
+  if (!m) return null;
+  const a = parseFloat(m[1].replace(',', '.'));
+  const b = parseFloat(m[2].replace(',', '.'));
+  if (!a || !b) return null;
+  return { largMM: Math.round(a * 1000), comprMM: Math.round(b * 1000) };
+}
+
+/* Assinatura da tabela "Resumo" (uma linha por OP/pedido). SALDO separa ela
+   da tabela "Produção" (detalhe por palete — mesmas OP/OC/OF/CLIENTE/MEDIDA,
+   mas sem SALDO); sem essa exigência cada pedido duplicaria por palete. */
+const COLS_PRODUCAO = ['OP', 'OC', 'OF', 'CLIENTE', 'MEDIDA', 'SALDO'];
+
+function extraiLinhasProducaoXLSX(sheet, arquivo) {
+  const aoa = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: true, defval: '' });
+  let hIdx = -1, colMap = {};
+  for (let i = 0; i < aoa.length; i++) {
+    const row = aoa[i].map(c => String(c == null ? '' : c).trim().toUpperCase());
+    if (COLS_PRODUCAO.every(k => row.includes(k))) {
+      hIdx = i;
+      aoa[i].forEach((v, ci) => {
+        const k = String(v == null ? '' : v).trim().toUpperCase();
+        if (k && colMap[k] == null) colMap[k] = ci;
+      });
+      break;
+    }
+  }
+  if (hIdx < 0) return [];
+  const colQtde = colMap['QTDE PEDIDO'] != null ? colMap['QTDE PEDIDO'] : colMap['QTDE'];
+  const dataArquivo = dataDoNomeArquivo(arquivo);
+  const linhas = [];
+  for (let i = hIdx + 1; i < aoa.length; i++) {
+    const row = aoa[i];
+    const cliente = String(row[colMap['CLIENTE']] == null ? '' : row[colMap['CLIENTE']]).trim();
+    const op = String(row[colMap['OP']] == null ? '' : row[colMap['OP']]).trim();
+    if (!cliente || !op) continue;
+    const med = parseMedida(row[colMap['MEDIDA']]);
+    if (!med) continue;
+    linhas.push({
+      cliente,
+      oc: String(row[colMap['OC']] == null ? '' : row[colMap['OC']]).trim(),
+      data: dataArquivo,
+      largMM: med.largMM, comprMM: med.comprMM,
+      qtde: +row[colQtde] || 0,
+      arquivo, status: 'produzido'
+    });
+  }
+  return linhas;
+}
+
+async function extraiLinhasProducaoPDF(buf, arquivo) {
+  const doc = await pdfjsLib.getDocument({ data: buf }).promise;
+  const dataArquivo = dataDoNomeArquivo(arquivo);
+  const linhas = [];
+  for (let p = 1; p <= doc.numPages; p++) {
+    const page = await doc.getPage(p);
+    const tc = await page.getTextContent();
+
+    const linhasPagina = [];
+    tc.items.forEach(it => {
+      const texto = (it.str || '').trim();
+      if (!texto) return;
+      const y = it.transform[5], x = it.transform[4];
+      let linha = linhasPagina.find(l => Math.abs(l.y - y) < 1.5);
+      if (!linha) { linha = { y, itens: [] }; linhasPagina.push(linha); }
+      linha.itens.push({ x, texto });
+    });
+    linhasPagina.forEach(l => l.itens.sort((a, b) => a.x - b.x));
+    linhasPagina.sort((a, b) => b.y - a.y); // topo → fim da página
+
+    let cols = null; // [{x, nome}]
+    for (const linha of linhasPagina) {
+      const its = linha.itens;
+      const textosUpper = its.map(i => i.texto.toUpperCase());
+
+      if (COLS_PRODUCAO.every(k => textosUpper.includes(k))) {
+        cols = [];
+        for (let i = 0; i < its.length; i++) {
+          const nome = its[i].texto.toUpperCase();
+          if (nome === 'QTDE' && its[i + 1] && its[i + 1].texto.toUpperCase() === 'PEDIDO') {
+            cols.push({ x: its[i].x, nome: 'QTDE PEDIDO' });
+            i++;
+          } else {
+            cols.push({ x: its[i].x, nome });
+          }
+        }
+        continue;
+      }
+      if (!cols) continue;
+      if (textosUpper.some(t => t.includes('RESUMO') || t.startsWith('TOTAL'))) { cols = null; continue; }
+
+      const porColuna = {};
+      its.forEach(item => {
+        let alvo = cols[0];
+        for (const c of cols) { if (c.x <= item.x + 0.5) alvo = c; else break; }
+        porColuna[alvo.nome] = (porColuna[alvo.nome] ? porColuna[alvo.nome] + ' ' : '') + item.texto;
+      });
+
+      const cliente = (porColuna['CLIENTE'] || '').trim();
+      const op = (porColuna['OP'] || '').trim();
+      if (!cliente || !op) continue;
+      const med = parseMedida(porColuna['MEDIDA']);
+      if (!med) continue;
+      linhas.push({
+        cliente,
+        oc: (porColuna['OC'] || '').trim(),
+        data: dataArquivo,
+        largMM: med.largMM, comprMM: med.comprMM,
+        qtde: parseInt(String(porColuna['QTDE PEDIDO'] || porColuna['QTDE'] || '').replace(/\D/g, ''), 10) || 0,
+        arquivo, status: 'produzido'
+      });
+    }
+  }
+  return linhas;
+}
+
+/* Assinatura das abas do arquivo de programação (fila pendente). */
+const COLS_FILA = ['CLIENTE', 'OC', 'DATA PEDIDO', 'QTDE PEDIDO'];
+
+function extraiLinhasFilaXLSX(sheet, arquivo) {
+  const aoa = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: true, defval: '' });
+  let hIdx = -1, colMap = {}, colLarg = null, colCompr = null;
+  for (let i = 0; i < aoa.length; i++) {
+    const row = aoa[i].map(c => String(c == null ? '' : c).trim().toUpperCase());
+    if (COLS_FILA.every(k => row.includes(k))) {
+      hIdx = i;
+      aoa[i].forEach((v, ci) => {
+        const k = String(v == null ? '' : v).trim().toUpperCase();
+        if (k && colMap[k] == null) colMap[k] = ci;
+        if (k.startsWith('LARGURA') && colLarg == null) colLarg = ci;
+        if (k.startsWith('COMPRIMENTO') && colCompr == null) colCompr = ci;
+      });
+      break;
+    }
+  }
+  if (hIdx < 0 || colLarg == null || colCompr == null) return [];
+  const linhas = [];
+  for (let i = hIdx + 1; i < aoa.length; i++) {
+    const row = aoa[i];
+    const cliente = String(row[colMap['CLIENTE']] == null ? '' : row[colMap['CLIENTE']]).trim();
+    if (!cliente) continue;
+    const larg = +row[colLarg] || 0, compr = +row[colCompr] || 0;
+    if (!larg || !compr) continue;
+    linhas.push({
+      cliente,
+      oc: String(row[colMap['OC']] == null ? '' : row[colMap['OC']]).trim(),
+      data: dataCelula(row[colMap['DATA PEDIDO']]),
+      largMM: Math.round(larg * 1000), comprMM: Math.round(compr * 1000),
+      qtde: +row[colMap['QTDE PEDIDO']] || 0,
+      arquivo, status: 'fila'
+    });
+  }
+  return linhas;
+}
+
+const normTxtDup = s => String(s || '').trim().toUpperCase().replace(/\s+/g, ' ');
+const normOC = s => String(s || '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+function clienteBate(a, b) {
+  const x = normTxtDup(a), y = normTxtDup(b);
+  if (x.length < 3 || y.length < 3) return x === y;
+  return x === y || x.includes(y) || y.includes(x);
+}
+
+function atualizaChipDuplicidade() {
+  const chip = $('dupChip'), btn = $('dupBtnAtualizar');
+  if (!window.showDirectoryPicker) {
+    chip.textContent = '⚠️ Indisponível neste navegador (use Chrome/Edge no PC)';
+    chip.className = 'fila-chip pul';
+    btn.style.display = 'none';
+    return;
+  }
+  if (dirHandleProducao && indiceProducao) {
+    chip.textContent = '✓ Produção conectada — ' + indiceProducao.length + ' pedidos';
+    chip.className = 'fila-chip ok';
+    btn.style.display = '';
+  } else {
+    chip.textContent = '🔗 Conectar pasta "produção produzida"';
+    chip.className = 'fila-chip';
+    btn.style.display = 'none';
+  }
+}
+
+function atualizaChipFila() {
+  const chip = $('dupChipFila'), btn = $('dupBtnAtualizarFila');
+  if (!window.showDirectoryPicker) { btn.style.display = 'none'; return; }
+  if (dirHandleFila && indiceFila) {
+    chip.textContent = '✓ Programação conectada — ' + indiceFila.length + ' pedidos na fila';
+    chip.className = 'fila-chip ok';
+    btn.style.display = '';
+  } else {
+    chip.textContent = '🔗 Conectar pasta "programação" (fila)';
+    chip.className = 'fila-chip';
+    btn.style.display = 'none';
+  }
+}
+
+async function atualizaIndiceDuplicidade() {
+  $('dupChip').textContent = 'Atualizando...';
+  await escaneiaPastaProducao();
+  atualizaChipDuplicidade();
+}
+async function atualizaIndiceFila() {
+  $('dupChipFila').textContent = 'Atualizando...';
+  await escaneiaPastaFila();
+  atualizaChipFila();
+}
+
+/* ===== busca ===== */
+function limpaBusca() {
+  $('formBusca').reset();
+  $('resultados').innerHTML = '';
+}
+
+function buscar(ev) {
+  ev.preventDefault();
+  const cliente = $('bCliente').value;
+  const oc = normOC($('bOC').value);
+  const larg = +$('bLarg').value || 0;
+  const compr = +$('bCompr').value || 0;
+  const qtde = +$('bQtde').value || 0;
+
+  function acha(lista) {
+    if (!lista || !lista.length) return [];
+    if (oc) return lista.filter(l => normOC(l.oc) === oc && clienteBate(l.cliente, cliente));
+    if (larg && compr && qtde) return lista.filter(l => clienteBate(l.cliente, cliente) &&
+      l.largMM === larg && l.comprMM === compr && l.qtde === qtde);
+    return lista.filter(l => clienteBate(l.cliente, cliente));
+  }
+
+  const achadosProduzido = acha(indiceProducao);
+  const achadosFila = acha(indiceFila);
+  renderResultado(achadosProduzido, achadosFila);
+  return false;
+}
+
+function linhaItem(l) {
+  return '<div class="itemAchado"><b>' + l.cliente + '</b>' +
+    '<span>' + (l.oc ? 'OC ' + l.oc + ' · ' : '') +
+    l.largMM + '×' + l.comprMM + ' mm · ' + l.qtde + ' chapas' +
+    (l.data ? ' · ' + l.data : '') + ' · <i>' + l.arquivo + '</i></span></div>';
+}
+
+function renderResultado(produzidos, fila) {
+  const box = $('resultados');
+  if (!produzidos.length && !fila.length) {
+    box.innerHTML = '<div class="resultado nada"><h3>Não encontrado</h3>' +
+      '<p>Não achei esse pedido nem na produção já feita, nem na fila. Confira se as duas pastas estão conectadas e atualizadas acima, e se a OC/cliente/medida estão certos.</p></div>';
+    return;
+  }
+  let html = '';
+  if (produzidos.length) {
+    html += '<div class="resultado produzido"><h3>✅ Já produzido</h3>' +
+      produzidos.map(linhaItem).join('') + '</div>';
+  }
+  if (fila.length) {
+    html += '<div class="resultado fila"><h3>🟡 Na fila — ainda não produzido</h3>' +
+      fila.map(linhaItem).join('') + '</div>';
+  }
+  box.innerHTML = html;
+}
+
+/* ---------- início ---------- */
+tentaReconectarPastaProducao();
+tentaReconectarPastaFila();
+</script>
+</body>
+</html>

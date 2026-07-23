@@ -154,7 +154,10 @@ details .corpo{padding:10px 0}
 <body>
 <header>
   <h1>Onduladeira <small>· Prime</small></h1>
-  <button id="velChip" onclick="trocaAba('tab')" title="Velocidade de produção">60 m/min</button>
+  <div style="display:flex;align-items:center;gap:10px">
+    <a href="consulta.html" style="color:#9fc4e8;font-size:12.5px;text-decoration:none">Consulta OC →</a>
+    <button id="velChip" onclick="trocaAba('tab')" title="Velocidade de produção">60 m/min</button>
+  </div>
 </header>
 <nav class="tabbar">
   <button id="tabProg" class="on" onclick="trocaAba('prog')">Programação</button>
