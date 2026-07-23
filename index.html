@@ -2548,7 +2548,13 @@ async function extraiLinhasProducaoPDF(buf, arquivo) {
 }
 
 const normTxtDup = s => String(s || '').trim().toUpperCase().replace(/\s+/g, ' ');
-const normOC = s => String(s || '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+/* Tira tudo que não é letra/número e, se sobrar só dígitos, tira os zeros à
+   esquerda — "0039" e "39" têm que bater, é a mesma OC digitada diferente. */
+function normOC(s) {
+  let t = String(s || '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+  if (/^\d+$/.test(t)) t = t.replace(/^0+(?=\d)/, '');
+  return t;
+}
 /* Compara cliente por "contém" (não por igualdade exata): esses relatórios
    às vezes abreviam o nome do cliente (ex.: "PCBOX" em vez de "PCBOX
    EMBALAGENS LTDA"), então igualdade exata deixaria passar duplicidade real. */
