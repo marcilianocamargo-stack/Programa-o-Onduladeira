@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#0f1e2e">
 <title>Consulta OC — Prime</title>
-<link rel="manifest" href="data:application/manifest+json;base64,eyJuYW1lIjogIkNvbnN1bHRhIE9DIFByaW1lIiwgInNob3J0X25hbWUiOiAiQ29uc3VsdGEgT0MiLCAic3RhcnRfdXJsIjogImNvbnN1bHRhLmh0bWwiLCAiZGlzcGxheSI6ICJzdGFuZGFsb25lIiwgImJhY2tncm91bmRfY29sb3IiOiAiIzBmMWUyZSIsICJ0aGVtZV9jb2xvciI6ICIjMWEzYTVjIiwgImljb25zIjogW3sic3JjIjogImRhdGE6aW1hZ2Uvc3ZnK3htbDtiYXNlNjQsUEhOMlp5QjRiV3h1Y3owaWFIUjBjRG92TDNkM2R5NTNNeTV2Y21jdk1qQXdNQzl6ZG1jaUlIWnBaWGRDYjNnOUlqQWdNQ0F4TURBZ01UQXdJajRLUEhKbFkzUWdkMmxrZEdnOUlqRXdNQ0lnYUdWcFoyaDBQU0l4TURBaUlISjRQU0l4T0NJZ1ptbHNiRDBpSXpCbU1XVXlaU0l2UGdvOGNHRjBhQ0JrUFNKTk1UUWdOakl3Y1RrZ0xURTJJREU0SURBZ2RERTRJREFnZERFNElEQWdkREU0SURBaUlITjBjbTlyWlQwaUl6UmhOMlJpTXlJZ2MzUnliMnRsTFhkcFpIUm9QU0kzSWlCbWFXeHNQU0p1YjI1bElpQnpkSEp2YTJVdGJHbHVaV05oY0QwaWNtOTFibVFpTHo0S1BISmxZM1FnZUQwaU1UUWlJSGs5SWpNMElpQjNhV1IwYUQwaU56SWlJR2hsYVdkb2REMGlOeUlnY25nOUlqTXVOU0lnWm1sc2JEMGlJMlptWm1abVppSXZQZ284Y21WamRDQjRQU0l4TkNJZ2VUMGlOekluIF0sICJzaXplcyI6ICJhbnkiLCAidHlwZSI6ICJpbWFnZS9zdmcreG1sIiwgInB1cnBvc2UiOiAiYW55In1dfQ==">
+<link rel="manifest" href="data:application/manifest+json;base64,eyJuYW1lIjoiQ29uc3VsdGEgT0MgUHJpbWUiLCJzaG9ydF9uYW1lIjoiQ29uc3VsdGEgT0MiLCJzdGFydF91cmwiOiJjb25zdWx0YS5odG1sIiwiZGlzcGxheSI6InN0YW5kYWxvbmUiLCJiYWNrZ3JvdW5kX2NvbG9yIjoiIzBmMWUyZSIsInRoZW1lX2NvbG9yIjoiIzFhM2E1YyIsImljb25zIjpbeyJzcmMiOiJkYXRhOmltYWdlL3N2Zyt4bWw7YmFzZTY0LFBITjJaeUI0Yld4dWN6MGlhSFIwY0RvdkwzZDNkeTUzTXk1dmNtY3ZNakF3TUM5emRtY2lJSFpwWlhkQ2IzZzlJakFnTUNBeE1EQWdNVEF3SWo0OGNtVmpkQ0IzYVdSMGFEMGlNVEF3SWlCb1pXbG5hSFE5SWpFd01DSWdjbmc5SWpFNElpQm1hV3hzUFNJak1HWXhaVEpsSWk4K1BHTnBjbU5zWlNCamVEMGlORElpSUdONVBTSTBNaUlnY2owaU1qSWlJR1pwYkd3OUltNXZibVVpSUhOMGNtOXJaVDBpSXpabFlUaGtZeUlnYzNSeWIydGxMWGRwWkhSb1BTSTRJaTgrUEd4cGJtVWdlREU5SWpVNElpQjVNVDBpTlRnaUlIZ3lQU0k0TUNJZ2VUSTlJamd3SWlCemRISnZhMlU5SWlNMlpXRTRaR01pSUhOMGNtOXJaUzEzYVdSMGFEMGlPU0lnYzNSeWIydGxMV3hwYm1WallYQTlJbkp2ZFc1a0lpOCtQQzl6ZG1jKyIsInNpemVzIjoiYW55IiwidHlwZSI6ImltYWdlL3N2Zyt4bWwiLCJwdXJwb3NlIjoiYW55In1dfQ==">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Barlow:wght@400;500;600&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js"></script>
@@ -529,6 +529,8 @@ function renderResultado(produzidos, fila) {
 /* ---------- início ---------- */
 tentaReconectarPastaProducao();
 tentaReconectarPastaFila();
+if ('serviceWorker' in navigator && location.protocol.startsWith('http'))
+  navigator.serviceWorker.register('sw-consulta.js').catch(() => {});
 </script>
 </body>
 </html>
