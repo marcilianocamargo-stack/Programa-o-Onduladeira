@@ -217,17 +217,22 @@ details .corpo{padding:10px 0}
       <div class="card">
         <input type="hidden" id="fEditId">
         <div class="row">
-          <div><label>Data do pedido</label><input type="date" id="fData" required></div>
+          <div><label>Data do pedido</label><input type="date" id="fData" required oninput="verificaDuplicidade()"></div>
           <div><label>Nº da OP</label><input type="number" id="fOF" inputmode="numeric" required></div>
-          <div><label>OC (ordem de compra)</label><input id="fOC" autocomplete="off" placeholder="—"></div>
+          <div><label>OC (ordem de compra)</label><input id="fOC" autocomplete="off" placeholder="—" oninput="verificaDuplicidade()"></div>
         </div>
         <div class="nota" id="ofCentralView"></div>
+        <div id="dupStatusRow" style="display:flex;align-items:center;gap:8px;margin:2px 0 6px;flex-wrap:wrap">
+          <span id="dupChip" class="fila-chip" onclick="conectaPastaProducao()">🔗 Conectar pasta de produção</span>
+          <button type="button" id="dupBtnAtualizar" class="btn mini sec" style="display:none" onclick="atualizaIndiceDuplicidade()">🔄 Atualizar</button>
+        </div>
+        <div id="avisoDuplicidade"></div>
         <label>Cliente</label>
-        <input id="fCliente" list="dlClientes" autocomplete="off" required>
+        <input id="fCliente" list="dlClientes" autocomplete="off" required oninput="verificaDuplicidade()">
         <datalist id="dlClientes"></datalist>
         <div class="row">
           <div><label>Produto</label><select id="fProduto" onchange="aoMudarProduto()"></select></div>
-          <div><label>Quantidade de chapas</label><input type="number" id="fQtde" inputmode="numeric" min="1" required></div>
+          <div><label>Quantidade de chapas</label><input type="number" id="fQtde" inputmode="numeric" min="1" required oninput="verificaDuplicidade()"></div>
         </div>
         <div class="row">
           <div><label>Largura (mm)</label><input type="number" id="fLarg" inputmode="numeric" min="1" required oninput="recalcula()"></div>
@@ -891,6 +896,8 @@ function recalcula() {
     metro('Gramatura g/m²', c.gram == null ? '—' : fmt0(c.gram) + ' / ' + fmt0(c.gramNominal) + ' nom.') +
     metro('Coluna kgf/cm', c.coluna == null ? '—' : fmt(c.coluna, 2));
   function metro(t, v) { return '<div class="m"><b>' + v + '</b><span>' + t + '</span></div>'; }
+
+  verificaDuplicidade();
 }
 
 async function salvaOF(ev) {
@@ -962,6 +969,8 @@ function limpaForm() {
   aoMudarProduto();
   atualizaOfCentralView();
   sugereOP();
+  const av = $('avisoDuplicidade');
+  if (av) av.innerHTML = '';
 }
 
 /* Pré-preenche o campo (só sugestão, não reserva nada) com a próxima OP do
@@ -1842,6 +1851,30 @@ function parseVinco(s) {
   return /sem\s*vinco/i.test(s.trim()) ? 'x' : s.trim();
 }
 
+/* Converte a data do pedido lida do OCR ("23/07/2026", "23-07-26", já em ISO
+   "2026-07-23" etc.) para o formato ISO (aaaa-mm-dd) do <input type=date>.
+   Retorna '' se não reconhecer — nesse caso o campo fica com o valor padrão
+   (hoje) e o operador corrige na mão. */
+function parseDataBR(s) {
+  const t = String(s || '').trim();
+  if (!t) return '';
+  if (/^\d{4}-\d{2}-\d{2}$/.test(t)) return t; // já em ISO
+  const m = t.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/);
+  if (!m) return '';
+  let [, d, mo, a] = m;
+  if (a.length === 2) a = (+a < 70 ? '20' : '19') + a;
+  return a + '-' + mo.padStart(2, '0') + '-' + d.padStart(2, '0');
+}
+
+/* Data do pedido pode vir no nível da OC (o normal — a mesma data vale pra
+   todos os itens) ou, mais raramente, dentro de cada item. Aceita algumas
+   variações de chave que o OCR pode usar. */
+function achaDataPedido(oc, item) {
+  const bruto = (oc && (oc.Data || oc['Data do Pedido'] || oc['Data Pedido'] || oc.DataPedido)) ||
+    (item && (item.Data || item['Data do Pedido'] || item['Data Pedido'] || item.DataPedido)) || '';
+  return parseDataBR(bruto);
+}
+
 async function carregaFilaOCR(fileList) {
   const metaSalva = (() => {
     try { return JSON.parse(localStorage.getItem(FILA_KEY2)) || []; } catch(e) { return []; }
@@ -1884,6 +1917,7 @@ async function carregaFilaOCR(fileList) {
             const dados = {
               cliente: ocCliente,
               oc: ocNome,
+              data: achaDataPedido(oc, item),
               qtde: parseQtdeBR(item.Quantidade),
               larg: parseQtdeBR(item.Largura) || '',
               compr: parseQtdeBR(item.Comprimento) || '',
@@ -1918,6 +1952,7 @@ async function carregaFilaOCR(fileList) {
           const dados = {
             cliente: ocCliente,
             oc: ocNome,
+            data: achaDataPedido(item, item),
             qtde: parseQtdeBR(item.Quantidade),
             larg: parseQtdeBR(item.Largura) || '',
             compr: parseQtdeBR(item.Comprimento) || '',
@@ -2075,7 +2110,9 @@ async function mostraItemFila(idx) {
 }
 
 /* Preenche o formulário da OF com dados vindos de um JSON exportado pelo OCR.
-   Chaves suportadas (todas opcionais): cliente, of, oc, qtde, larg, compr, vinco, data, produto, onda */
+   Chaves suportadas (todas opcionais): cliente, of, oc, qtde, larg, compr, vinco, data, produto, onda
+   "data" já vem em ISO (aaaa-mm-dd) — ver achaDataPedido()/parseDataBR(). Se o
+   OCR não trouxer data, o campo mantém o valor padrão (hoje) e o operador corrige. */
 function autoPreencheFila(dados) {
   const mapa = { cliente:'fCliente', of:'fOF', oc:'fOC', qtde:'fQtde',
                  larg:'fLarg', compr:'fCompr', vinco:'fVinco', data:'fData' };
@@ -2089,6 +2126,7 @@ function autoPreencheFila(dados) {
     if (opt) { $('fProduto').value = val; aoMudarProduto(); }
   }
   if (tocou) recalcula();
+  verificaDuplicidade();
 }
 
 function navFila(delta) {
@@ -2137,12 +2175,206 @@ function fechaFila() {
   try { localStorage.removeItem(FILA_KEY2); } catch(e) {}
 }
 
+/* ===== DUPLICIDADE — conecta a pasta "produção produzida" (onde os Excel já
+   exportados por este app ficam salvos) pra avisar se uma OC/pedido já foi
+   lançado antes. Usa a File System Access API do Chrome/Edge (desktop) — só
+   funciona nesses navegadores; em outros o app segue funcionando normal, sem
+   o aviso automático.
+   Regra: se o pedido tem OC, procura Cliente+OC iguais no histórico (mostra
+   a data encontrada pra conferência). Sem OC, procura pelo mesmo Cliente +
+   Largura + Comprimento + Quantidade. */
+let dirHandleProducao = null;
+let indiceProducao = null;   // [{cliente, oc, data, largMM, comprMM, qtde, arquivo}]
+
+const DUP_DB_NAME = 'prime_dup_v1', DUP_STORE = 'handles', DUP_KEY = 'pastaProducao';
+
+function dupDB() {
+  return new Promise((res, rej) => {
+    const r = indexedDB.open(DUP_DB_NAME, 1);
+    r.onupgradeneeded = () => r.result.createObjectStore(DUP_STORE);
+    r.onsuccess = () => res(r.result);
+    r.onerror = () => rej(r.error);
+  });
+}
+async function salvaHandleProducao(handle) {
+  try {
+    const db2 = await dupDB();
+    await new Promise((res, rej) => {
+      const tx = db2.transaction(DUP_STORE, 'readwrite');
+      tx.objectStore(DUP_STORE).put(handle, DUP_KEY);
+      tx.oncomplete = res; tx.onerror = () => rej(tx.error);
+    });
+  } catch (e) {}
+}
+async function carregaHandleProducao() {
+  try {
+    const db2 = await dupDB();
+    return await new Promise((res, rej) => {
+      const tx = db2.transaction(DUP_STORE, 'readonly');
+      const rq = tx.objectStore(DUP_STORE).get(DUP_KEY);
+      rq.onsuccess = () => res(rq.result || null);
+      rq.onerror = () => rej(rq.error);
+    });
+  } catch (e) { return null; }
+}
+
+async function conectaPastaProducao() {
+  if (!window.showDirectoryPicker) {
+    alert('Este navegador não permite conectar pastas do computador — funciona no Chrome ou Edge, no PC. O aviso de duplicidade fica desativado aqui.');
+    return;
+  }
+  try {
+    const handle = await window.showDirectoryPicker();
+    dirHandleProducao = handle;
+    await salvaHandleProducao(handle);
+    const chip = $('dupChip');
+    if (chip) chip.textContent = 'Lendo pasta...';
+    await escaneiaPastaProducao();
+  } catch (e) { /* usuário cancelou a escolha da pasta */ }
+  atualizaChipDuplicidade();
+  verificaDuplicidade();
+}
+
+/* Ao abrir o app, tenta reusar a pasta já escolhida antes, sem pedir de novo
+   — só funciona se o navegador ainda tiver a permissão concedida (pode
+   expirar; nesse caso o operador clica em "Conectar pasta" outra vez). */
+async function tentaReconectarPastaProducao() {
+  const handle = await carregaHandleProducao();
+  if (!handle) { atualizaChipDuplicidade(); return; }
+  try {
+    const perm = await handle.queryPermission({ mode: 'read' });
+    if (perm === 'granted') {
+      dirHandleProducao = handle;
+      await escaneiaPastaProducao();
+    }
+  } catch (e) {}
+  atualizaChipDuplicidade();
+}
+
+async function escaneiaPastaProducao() {
+  if (!dirHandleProducao) return;
+  const linhas = [];
+  try {
+    for await (const [nome, entry] of dirHandleProducao.entries()) {
+      if (entry.kind !== 'file') continue;
+      if (!/\.xlsx$/i.test(nome) || nome.startsWith('~$')) continue; // ignora temporários do Excel
+      try {
+        const file = await entry.getFile();
+        const buf = await file.arrayBuffer();
+        const wb = XLSX.read(buf, { type: 'array' });
+        wb.SheetNames.forEach(sn => {
+          extraiLinhasProducao(wb.Sheets[sn], nome).forEach(l => linhas.push(l));
+        });
+      } catch (e) { /* arquivo corrompido ou aberto no Excel — ignora e segue */ }
+    }
+  } catch (e) { /* permissão perdida etc. */ }
+  indiceProducao = linhas;
+}
+
+/* Lê uma aba no formato de "Excel por Bobina"/"Excel por OC" deste app. Acha
+   a linha de cabeçalho procurando por Cliente/OC/Data Pedido em vez de fixar
+   posição de coluna, pra não quebrar se o layout do Excel mudar no futuro. */
+function extraiLinhasProducao(sheet, arquivo) {
+  const aoa = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: true, defval: '' });
+  let hIdx = -1, colMap = {};
+  for (let i = 0; i < aoa.length; i++) {
+    const row = aoa[i].map(c => String(c == null ? '' : c).trim());
+    if (row.includes('Cliente') && row.includes('OC') && row.includes('Data Pedido')) {
+      hIdx = i;
+      row.forEach((v, ci) => { if (v && colMap[v] == null) colMap[v] = ci; });
+      break;
+    }
+  }
+  if (hIdx < 0) return [];
+  const linhas = [];
+  for (let i = hIdx + 1; i < aoa.length; i++) {
+    const row = aoa[i];
+    const cliente = String(row[colMap['Cliente']] == null ? '' : row[colMap['Cliente']]).trim();
+    if (!cliente) continue;
+    const larg  = +row[colMap['largura']] || 0;
+    const compr = +row[colMap['comprimento (facão)']] || 0;
+    linhas.push({
+      cliente,
+      oc: String(row[colMap['OC']] == null ? '' : row[colMap['OC']]).trim(),
+      data: String(row[colMap['Data Pedido']] == null ? '' : row[colMap['Data Pedido']]).trim(),
+      largMM: Math.round(larg * 1000),
+      comprMM: Math.round(compr * 1000),
+      qtde: +row[colMap['Qtde Pedido']] || 0,
+      arquivo
+    });
+  }
+  return linhas;
+}
+
+const normTxtDup = s => String(s || '').trim().toUpperCase().replace(/\s+/g, ' ');
+const normOC = s => String(s || '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+
+function atualizaChipDuplicidade() {
+  const chip = $('dupChip'), btn = $('dupBtnAtualizar');
+  if (!chip) return;
+  if (!window.showDirectoryPicker) {
+    chip.textContent = '⚠️ Checagem de duplicidade indisponível neste navegador';
+    chip.className = 'fila-chip pul';
+    if (btn) btn.style.display = 'none';
+    return;
+  }
+  if (dirHandleProducao && indiceProducao) {
+    chip.textContent = '✓ Pasta conectada — ' + indiceProducao.length + ' itens no histórico';
+    chip.className = 'fila-chip ok';
+    if (btn) btn.style.display = '';
+  } else {
+    chip.textContent = '🔗 Conectar pasta de produção';
+    chip.className = 'fila-chip';
+    if (btn) btn.style.display = 'none';
+  }
+}
+
+async function atualizaIndiceDuplicidade() {
+  const chip = $('dupChip');
+  if (chip) chip.textContent = 'Atualizando...';
+  await escaneiaPastaProducao();
+  atualizaChipDuplicidade();
+  verificaDuplicidade();
+}
+
+/* Roda a cada mudança de Cliente/OC/Data/Largura/Comprimento/Quantidade no
+   formulário "Nova OF" e mostra o alerta vermelho se achar o mesmo pedido já
+   lançado antes na pasta de produção. */
+function verificaDuplicidade() {
+  const el = $('avisoDuplicidade');
+  if (!el) return;
+  if (!indiceProducao || !indiceProducao.length) { el.innerHTML = ''; return; }
+
+  const cliente = normTxtDup($('fCliente').value);
+  const oc = normOC($('fOC').value);
+  const larg = +$('fLarg').value || 0;
+  const compr = +$('fCompr').value || 0;
+  const qtde = +$('fQtde').value || 0;
+  if (!cliente) { el.innerHTML = ''; return; }
+
+  let achado = null;
+  if (oc) {
+    achado = indiceProducao.find(l => normOC(l.oc) === oc && normTxtDup(l.cliente) === cliente);
+  } else if (larg && compr && qtde) {
+    achado = indiceProducao.find(l => normTxtDup(l.cliente) === cliente &&
+      l.largMM === larg && l.comprMM === compr && l.qtde === qtde);
+  }
+
+  el.innerHTML = achado
+    ? '<div class="aviso ruim">🚨 <b>OC já produzida</b> — ' + achado.cliente +
+      (achado.oc ? ', OC ' + achado.oc : ' (sem OC, medida/qtde iguais)') +
+      (achado.data ? ', pedido de ' + achado.data : '') +
+      '. Encontrado em <b>' + achado.arquivo + '</b>. Confira antes de lançar de novo.</div>'
+    : '';
+}
+
 /* ---------- início ---------- */
 carrega();
 montaProdutos();
 limpaForm();
 desenhaProg();
 trocaAba('prog');
+tentaReconectarPastaProducao();
 if ('serviceWorker' in navigator && location.protocol.startsWith('http'))
   navigator.serviceWorker.register('sw.js').catch(() => {});
 
