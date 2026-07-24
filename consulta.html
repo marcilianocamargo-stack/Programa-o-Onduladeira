@@ -307,6 +307,7 @@ function extraiLinhasProducaoXLSX(sheet, arquivo) {
     if (!med) continue;
     linhas.push({
       cliente,
+      op,
       of: String(row[colMap['OF']] == null ? '' : row[colMap['OF']]).trim(),
       oc: String(row[colMap['OC']] == null ? '' : row[colMap['OC']]).trim(),
       data: dataArquivo,
@@ -375,6 +376,7 @@ async function extraiLinhasProducaoPDF(buf, arquivo) {
       const produzidoTxt = porColuna['PRODUZIDO'] || porColuna['PRODUZID'];
       linhas.push({
         cliente,
+        op,
         of: (porColuna['OF'] || '').trim(),
         oc: (porColuna['OC'] || '').trim(),
         data: dataArquivo,
@@ -510,6 +512,9 @@ function limpaBusca() {
   $('resultados').innerHTML = '';
 }
 
+let ultimoAchadosProduzido = [];
+let ultimoClienteBuscado = '';
+
 function buscar(ev) {
   if (ev && ev.preventDefault) ev.preventDefault();
   const cliente = $('bCliente').value;
@@ -547,6 +552,8 @@ function buscar(ev) {
     normOC(p.oc) === normOC(f.oc) && p.largMM === f.largMM && p.comprMM === f.comprMM &&
     p.qtde === f.qtde && clienteBate(p.cliente, f.cliente)
   ));
+  ultimoAchadosProduzido = achadosProduzido;
+  ultimoClienteBuscado = cliente.trim();
   renderResultado(achadosProduzido, achadosFila);
   return false;
 }
@@ -571,13 +578,90 @@ function renderResultado(produzidos, fila) {
   let html = '';
   if (produzidos.length) {
     html += '<div class="resultado produzido"><h3>✅ Já produzido</h3>' +
-      produzidos.map(linhaItem).join('') + '</div>';
+      produzidos.map(linhaItem).join('') +
+      '<button type="button" class="btn mini sec" style="margin-top:10px" onclick="exportaRelatorioProduzidos()">📄 Gerar relatório (Excel)</button></div>';
   }
   if (fila.length) {
     html += '<div class="resultado fila"><h3>🟡 Na fila — ainda não produzido</h3>' +
       fila.map(linhaItem).join('') + '</div>';
   }
   box.innerHTML = html;
+}
+
+function baixa(blob, nome) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = nome;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 4000);
+}
+
+/* Gera um Excel só com os pedidos "já produzidos" do resultado atual da
+   busca — mesmas colunas do relatório de produção já usado na Prime
+   (Arquivo Fonte, Cliente, OP, OC, OF, Medida, Qtd Produzida, Qtd Pedido,
+   Saldo), pra continuar compatível com quem já usa esse formato. */
+function exportaRelatorioProduzidos() {
+  if (!ultimoAchadosProduzido.length) { alert('Nenhum item já produzido pra exportar. Faça uma busca primeiro.'); return; }
+
+  const HEAD = ['Arquivo Fonte', 'Cliente', 'OP', 'OC', 'OF', 'Medida', 'Qtd Produzida', 'Qtd Pedido', 'Saldo'];
+  const brd = { style: 'thin', color: { rgb: 'CCD8E4' } };
+  const b4 = { top: brd, bottom: brd, left: brd, right: brd };
+  const aoa = [], estilos = {};
+
+  function addRow(cells, styleFn) {
+    const r = aoa.length;
+    aoa.push(cells);
+    cells.forEach((_, ci) => { estilos[XLSX.utils.encode_cell({ r, c: ci })] = styleFn(ci); });
+    return r;
+  }
+
+  addRow(HEAD, () => ({
+    font: { bold: true, color: { rgb: 'FFFFFF' } }, fill: { fgColor: { rgb: '0F1E2E' } },
+    border: b4, alignment: { horizontal: 'center', wrapText: true }
+  }));
+
+  let totProduzida = 0, totPedido = 0, totSaldo = 0;
+  ultimoAchadosProduzido.forEach(l => {
+    const produzida = l.produzido != null ? l.produzido : 0;
+    const saldo = l.produzido != null ? (l.produzido - l.qtde) : 0;
+    totProduzida += produzida; totPedido += l.qtde; totSaldo += saldo;
+    const medidaTxt = String(l.largMM).padStart(4, '0') + ' X ' + String(l.comprMM).padStart(4, '0');
+    addRow([l.arquivo, l.cliente, l.op || '-', l.oc || '-', l.of || '-', medidaTxt, produzida, l.qtde, saldo],
+      ci => ({ border: b4, alignment: { horizontal: ci >= 6 ? 'right' : 'left' } }));
+  });
+
+  addRow(['', '', '', '', '', 'Total', totProduzida, totPedido, totSaldo], ci => ({
+    font: { bold: true }, fill: { fgColor: { rgb: 'DBE7F3' } }, border: b4,
+    alignment: { horizontal: ci >= 6 ? 'right' : 'left' }
+  }));
+
+  const agora = new Date();
+  const dataTxt = String(agora.getDate()).padStart(2, '0') + '/' + String(agora.getMonth() + 1).padStart(2, '0') + '/' + agora.getFullYear();
+  aoa.push([]);
+  const rNota = aoa.length;
+  aoa.push(['Relatório gerado em ' + dataTxt + '. Fonte: pastas de produção conectadas na Consulta OC Prime (Excel/PDF).']);
+  estilos[XLSX.utils.encode_cell({ r: rNota, c: 0 })] = { font: { italic: true, sz: 10, color: { rgb: '51637A' } } };
+
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  Object.entries(estilos).forEach(([ref, s]) => { if (ws[ref]) ws[ref].s = s; });
+  ws['!cols'] = [{ wch: 42 }, { wch: 22 }, { wch: 10 }, { wch: 10 }, { wch: 8 }, { wch: 14 }, { wch: 13 }, { wch: 11 }, { wch: 9 }];
+  ws['!merges'] = [{ s: { r: rNota, c: 0 }, e: { r: rNota, c: HEAD.length - 1 } }];
+
+  const wb = XLSX.utils.book_new();
+  // Prefere o nome completo do cliente como veio no relatório (mais
+  // descritivo) — só cai pro texto digitado se o resultado misturar mais de
+  // um cliente (ex.: busca só por medida, sem OC nem cliente).
+  const clientesUnicos = [...new Set(ultimoAchadosProduzido.map(l => l.cliente))];
+  const clienteNome = clientesUnicos.length === 1 ? clientesUnicos[0] : (ultimoClienteBuscado || 'Consulta');
+  const slug = s => String(s).trim().toUpperCase()
+    .normalize('NFD').replace(/[̀-ͯ]/g, '') // tira acento
+    .replace(/[^A-Z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+  const nomeBase = 'Relatorio_Producao_' + (slug(clienteNome) || 'CONSULTA');
+  XLSX.utils.book_append_sheet(wb, ws, ('Producao ' + clienteNome).slice(0, 31));
+
+  const dados = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+  const blob = new Blob([dados], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+  baixa(blob, nomeBase + '.xlsx');
 }
 
 /* ---------- início ---------- */
