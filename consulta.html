@@ -81,9 +81,11 @@ input:focus{outline:2px solid var(--kraft);outline-offset:0;border-color:var(--k
   </div>
 
   <form id="formBusca" class="card" onsubmit="return buscar(event)">
-    <p class="nota" style="margin-top:0">Preencha só o que você tiver — a busca já roda enquanto você digita. Só a OC já basta (ela quase não se repete); só a medida também busca.</p>
-    <label>OC (ordem de compra)</label>
-    <input id="bOC" autocomplete="off" placeholder="ex.: 1518" oninput="agendaBusca()">
+    <p class="nota" style="margin-top:0">Preencha só o que você tiver — a busca já roda enquanto você digita. Só a OC já basta (ela quase não se repete); só a medida ou só o OF também buscam.</p>
+    <div class="row">
+      <div><label>OC (ordem de compra)</label><input id="bOC" autocomplete="off" placeholder="ex.: 1518" oninput="agendaBusca()"></div>
+      <div><label>OF</label><input id="bOF" autocomplete="off" placeholder="ex.: 1417" oninput="agendaBusca()"></div>
+    </div>
     <div class="row">
       <div><label>Largura (mm)</label><input id="bLarg" type="number" inputmode="numeric" oninput="agendaBusca()"></div>
       <div><label>Compr. (mm)</label><input id="bCompr" type="number" inputmode="numeric" oninput="agendaBusca()"></div>
@@ -305,6 +307,7 @@ function extraiLinhasProducaoXLSX(sheet, arquivo) {
     if (!med) continue;
     linhas.push({
       cliente,
+      of: String(row[colMap['OF']] == null ? '' : row[colMap['OF']]).trim(),
       oc: String(row[colMap['OC']] == null ? '' : row[colMap['OC']]).trim(),
       data: dataArquivo,
       largMM: med.largMM, comprMM: med.comprMM,
@@ -372,6 +375,7 @@ async function extraiLinhasProducaoPDF(buf, arquivo) {
       const produzidoTxt = porColuna['PRODUZIDO'] || porColuna['PRODUZID'];
       linhas.push({
         cliente,
+        of: (porColuna['OF'] || '').trim(),
         oc: (porColuna['OC'] || '').trim(),
         data: dataArquivo,
         largMM: med.largMM, comprMM: med.comprMM,
@@ -389,6 +393,11 @@ const COLS_FILA = ['CLIENTE', 'OC', 'DATA PEDIDO', 'QTDE PEDIDO'];
 
 function extraiLinhasFilaXLSX(sheet, arquivo) {
   const aoa = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: true, defval: '' });
+  // não tem coluna "OF" própria nessa planilha — o número vem só no título da
+  // aba, tipo "PROGRAMAÇÃO ONDULADEIRA - ABAPEL — OF: 001417".
+  const tituloTxt = aoa.slice(0, 3).map(r => r.join(' ')).join(' ');
+  const mOF = tituloTxt.match(/OF:\s*0*(\d+)/i);
+  const ofTitulo = mOF ? mOF[1] : '';
   let hIdx = -1, colMap = {}, colLarg = null, colCompr = null;
   for (let i = 0; i < aoa.length; i++) {
     const row = aoa[i].map(c => String(c == null ? '' : c).trim().toUpperCase());
@@ -413,6 +422,7 @@ function extraiLinhasFilaXLSX(sheet, arquivo) {
     if (!larg || !compr) continue;
     linhas.push({
       cliente,
+      of: ofTitulo,
       oc: String(row[colMap['OC']] == null ? '' : row[colMap['OC']]).trim(),
       data: dataCelula(row[colMap['DATA PEDIDO']]),
       largMM: Math.round(larg * 1000), comprMM: Math.round(compr * 1000),
@@ -504,28 +514,29 @@ function buscar(ev) {
   if (ev && ev.preventDefault) ev.preventDefault();
   const cliente = $('bCliente').value;
   const oc = normOC($('bOC').value);
+  const of_ = normOC($('bOF').value);
   const larg = +$('bLarg').value || 0;
   const compr = +$('bCompr').value || 0;
   const qtde = +$('bQtde').value || 0;
   const clienteOk = cliente.trim().length >= 3;
+  const medidaOk = !!(larg && compr);
+
+  // precisa de pelo menos um critério "forte" (OC, OF, medida completa, ou
+  // cliente com 3+ letras) — os campos preenchidos combinam entre si (E),
+  // não substituem um ao outro.
+  if (!oc && !of_ && !medidaOk && !clienteOk) { $('resultados').innerHTML = ''; return false; }
 
   function acha(lista) {
     if (!lista || !lista.length) return [];
-    let r;
-    if (oc) {
-      r = lista.filter(l => normOC(l.oc) === oc);
-    } else if (larg && compr) {
-      r = lista.filter(l => l.largMM === larg && l.comprMM === compr && (!qtde || l.qtde === qtde));
-    } else if (clienteOk) {
-      r = lista.filter(l => clienteBate(l.cliente, cliente));
-    } else {
-      return [];
-    }
-    if (cliente.trim() && (oc || (larg && compr))) r = r.filter(l => clienteBate(l.cliente, cliente));
-    return r;
+    return lista.filter(l => {
+      if (oc && normOC(l.oc) !== oc) return false;
+      if (of_ && normOC(l.of) !== of_) return false;
+      if (medidaOk && (l.largMM !== larg || l.comprMM !== compr)) return false;
+      if (medidaOk && qtde && l.qtde !== qtde) return false;
+      if (cliente.trim() && !clienteBate(l.cliente, cliente)) return false;
+      return true;
+    });
   }
-
-  if (!oc && !(larg && compr) && !clienteOk) { $('resultados').innerHTML = ''; return false; }
 
   const achadosProduzido = acha(indiceProducao);
   const achadosFila = acha(indiceFila);
@@ -538,7 +549,7 @@ function linhaItem(l) {
     ? l.qtde + ' pedidas · ' + l.produzido + ' produzidas'
     : l.qtde + ' chapas';
   return '<div class="itemAchado"><b>' + l.cliente + '</b>' +
-    '<span>' + (l.oc ? 'OC ' + l.oc + ' · ' : '') +
+    '<span>' + (l.of ? 'OF ' + l.of + ' · ' : '') + (l.oc ? 'OC ' + l.oc + ' · ' : '') +
     l.largMM + '×' + l.comprMM + ' mm · ' + qtdeTxt +
     (l.data ? ' · ' + l.data : '') + ' · <i>' + l.arquivo + '</i></span></div>';
 }
