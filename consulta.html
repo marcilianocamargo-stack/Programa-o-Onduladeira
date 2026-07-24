@@ -539,7 +539,14 @@ function buscar(ev) {
   }
 
   const achadosProduzido = acha(indiceProducao);
-  const achadosFila = acha(indiceFila);
+  // A planilha de programação (fila) às vezes continua com o pedido depois
+  // dele já ter sido produzido (não é atualizada automaticamente). Se achar
+  // a mesma OC + medida + quantidade nos dois lados, é o mesmo pedido — some
+  // com o "na fila" e mostra só "já produzido", pra não parecer duplicidade.
+  const achadosFila = acha(indiceFila).filter(f => !achadosProduzido.some(p =>
+    normOC(p.oc) === normOC(f.oc) && p.largMM === f.largMM && p.comprMM === f.comprMM &&
+    p.qtde === f.qtde && clienteBate(p.cliente, f.cliente)
+  ));
   renderResultado(achadosProduzido, achadosFila);
   return false;
 }
