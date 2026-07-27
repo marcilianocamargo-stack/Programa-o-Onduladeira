@@ -515,6 +515,7 @@ function limpaBusca() {
 }
 
 let ultimoAchadosProduzido = [];
+let ultimoAchadosFila = [];
 let ultimoClienteBuscado = '';
 
 function buscar(ev) {
@@ -557,6 +558,7 @@ function buscar(ev) {
     p.qtde === f.qtde && clienteBate(p.cliente, f.cliente)
   ));
   ultimoAchadosProduzido = achadosProduzido;
+  ultimoAchadosFila = achadosFila;
   ultimoClienteBuscado = cliente.trim();
   renderResultado(achadosProduzido, achadosFila);
   return false;
@@ -587,7 +589,8 @@ function renderResultado(produzidos, fila) {
   }
   if (fila.length) {
     html += '<div class="resultado fila"><h3>🟡 Na fila — ainda não produzido</h3>' +
-      fila.map(linhaItem).join('') + '</div>';
+      fila.map(linhaItem).join('') +
+      '<button type="button" class="btn mini sec" style="margin-top:10px" onclick="exportaRelatorioFila()">📄 Gerar relatório (Excel)</button></div>';
   }
   box.innerHTML = html;
 }
@@ -598,6 +601,19 @@ function baixa(blob, nome) {
   a.href = url; a.download = nome;
   document.body.appendChild(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 4000);
+}
+
+const slugArquivo = s => String(s).trim().toUpperCase()
+  .normalize('NFD').replace(/[̀-ͯ]/g, '') // tira acento
+  .replace(/[^A-Z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+
+/* Nome do cliente pra usar no título/nome do arquivo do relatório: prefere o
+   nome completo como veio no relatório (mais descritivo) — só cai pro texto
+   digitado se o resultado misturar mais de um cliente (ex.: busca só por
+   medida, sem OC nem cliente). */
+function nomeClienteRelatorio(lista) {
+  const clientesUnicos = [...new Set(lista.map(l => l.cliente))];
+  return clientesUnicos.length === 1 ? clientesUnicos[0] : (ultimoClienteBuscado || 'Consulta');
 }
 
 /* Gera um Excel só com os pedidos "já produzidos" do resultado atual da
@@ -652,16 +668,67 @@ function exportaRelatorioProduzidos() {
   ws['!merges'] = [{ s: { r: rNota, c: 0 }, e: { r: rNota, c: HEAD.length - 1 } }];
 
   const wb = XLSX.utils.book_new();
-  // Prefere o nome completo do cliente como veio no relatório (mais
-  // descritivo) — só cai pro texto digitado se o resultado misturar mais de
-  // um cliente (ex.: busca só por medida, sem OC nem cliente).
-  const clientesUnicos = [...new Set(ultimoAchadosProduzido.map(l => l.cliente))];
-  const clienteNome = clientesUnicos.length === 1 ? clientesUnicos[0] : (ultimoClienteBuscado || 'Consulta');
-  const slug = s => String(s).trim().toUpperCase()
-    .normalize('NFD').replace(/[̀-ͯ]/g, '') // tira acento
-    .replace(/[^A-Z0-9]+/g, '_').replace(/^_+|_+$/g, '');
-  const nomeBase = 'Relatorio_Producao_' + (slug(clienteNome) || 'CONSULTA');
+  const clienteNome = nomeClienteRelatorio(ultimoAchadosProduzido);
+  const nomeBase = 'Relatorio_Producao_' + (slugArquivo(clienteNome) || 'CONSULTA');
   XLSX.utils.book_append_sheet(wb, ws, ('Producao ' + clienteNome).slice(0, 31));
+
+  const dados = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+  const blob = new Blob([dados], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+  baixa(blob, nomeBase + '.xlsx');
+}
+
+/* Igual à de cima, mas pros itens "na fila" (ainda não produzidos) — sem
+   coluna de produzida/saldo (não existe esse dado ainda), com a data do
+   pedido no lugar (essa sim é conhecida antes de produzir). */
+function exportaRelatorioFila() {
+  if (!ultimoAchadosFila.length) { alert('Nenhum item na fila pra exportar. Faça uma busca primeiro.'); return; }
+
+  const HEAD = ['Arquivo Fonte', 'Cliente', 'OP', 'OC', 'OF', 'Medida', 'Qtd Pedido', 'Data Pedido'];
+  const brd = { style: 'thin', color: { rgb: 'CCD8E4' } };
+  const b4 = { top: brd, bottom: brd, left: brd, right: brd };
+  const aoa = [], estilos = {};
+
+  function addRow(cells, styleFn) {
+    const r = aoa.length;
+    aoa.push(cells);
+    cells.forEach((_, ci) => { estilos[XLSX.utils.encode_cell({ r, c: ci })] = styleFn(ci); });
+    return r;
+  }
+
+  addRow(HEAD, () => ({
+    font: { bold: true, color: { rgb: 'FFFFFF' } }, fill: { fgColor: { rgb: '8A6400' } },
+    border: b4, alignment: { horizontal: 'center', wrapText: true }
+  }));
+
+  let totPedido = 0;
+  ultimoAchadosFila.forEach(l => {
+    totPedido += l.qtde;
+    const medidaTxt = String(l.largMM).padStart(4, '0') + ' X ' + String(l.comprMM).padStart(4, '0');
+    addRow([l.arquivo, l.cliente, l.op || '-', l.oc || '-', l.of || '-', medidaTxt, l.qtde, l.data || '-'],
+      ci => ({ border: b4, alignment: { horizontal: ci === 6 ? 'right' : 'left' } }));
+  });
+
+  addRow(['', '', '', '', '', 'Total', totPedido, ''], ci => ({
+    font: { bold: true }, fill: { fgColor: { rgb: 'FFF3CD' } }, border: b4,
+    alignment: { horizontal: ci === 6 ? 'right' : 'left' }
+  }));
+
+  const agora = new Date();
+  const dataTxt = String(agora.getDate()).padStart(2, '0') + '/' + String(agora.getMonth() + 1).padStart(2, '0') + '/' + agora.getFullYear();
+  aoa.push([]);
+  const rNota = aoa.length;
+  aoa.push(['Relatório gerado em ' + dataTxt + '. Fonte: pasta de programação (fila, ainda não produzida) conectada na Consulta OC Prime.']);
+  estilos[XLSX.utils.encode_cell({ r: rNota, c: 0 })] = { font: { italic: true, sz: 10, color: { rgb: '51637A' } } };
+
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  Object.entries(estilos).forEach(([ref, s]) => { if (ws[ref]) ws[ref].s = s; });
+  ws['!cols'] = [{ wch: 42 }, { wch: 22 }, { wch: 10 }, { wch: 10 }, { wch: 8 }, { wch: 14 }, { wch: 11 }, { wch: 13 }];
+  ws['!merges'] = [{ s: { r: rNota, c: 0 }, e: { r: rNota, c: HEAD.length - 1 } }];
+
+  const wb = XLSX.utils.book_new();
+  const clienteNome = nomeClienteRelatorio(ultimoAchadosFila);
+  const nomeBase = 'Relatorio_Fila_' + (slugArquivo(clienteNome) || 'CONSULTA');
+  XLSX.utils.book_append_sheet(wb, ws, ('Fila ' + clienteNome).slice(0, 31));
 
   const dados = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
   const blob = new Blob([dados], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
