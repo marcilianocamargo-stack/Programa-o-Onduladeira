@@ -275,10 +275,14 @@ function parseMedida(s) {
   return { largMM: Math.round(a * 1000), comprMM: Math.round(b * 1000) };
 }
 
-/* Assinatura da tabela "Resumo" (uma linha por OP/pedido). SALDO separa ela
-   da tabela "Produção" (detalhe por palete — mesmas OP/OC/OF/CLIENTE/MEDIDA,
-   mas sem SALDO); sem essa exigência cada pedido duplicaria por palete. */
-const COLS_PRODUCAO = ['OP', 'OC', 'OF', 'CLIENTE', 'MEDIDA', 'SALDO'];
+/* Assinatura da tabela "Resumo" (uma linha por pedido). SALDO separa ela da
+   tabela "Produção" (detalhe por palete — mesmas OC/CLIENTE/MEDIDA, mas sem
+   SALDO); sem essa exigência cada pedido duplicaria por palete.
+   NÃO exige OP nem OF: relatórios mais antigos (ex.: antes de 09/07/2026) só
+   têm uma dessas duas colunas — a que existir guarda o número do pedido (ver
+   extraiLinhasProducaoXLSX/PDF). Exigir as duas deixava o arquivo inteiro
+   invisível pra busca quando faltava uma. */
+const COLS_PRODUCAO = ['OC', 'CLIENTE', 'MEDIDA', 'SALDO'];
 
 function extraiLinhasProducaoXLSX(sheet, arquivo) {
   const aoa = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: true, defval: '' });
@@ -302,14 +306,19 @@ function extraiLinhasProducaoXLSX(sheet, arquivo) {
   for (let i = hIdx + 1; i < aoa.length; i++) {
     const row = aoa[i];
     const cliente = String(row[colMap['CLIENTE']] == null ? '' : row[colMap['CLIENTE']]).trim();
-    const op = String(row[colMap['OP']] == null ? '' : row[colMap['OP']]).trim();
+    // relatórios antigos não têm coluna "OP" própria — nesse caso a coluna
+    // "OF" é que guarda o número do pedido, e não sobra um "OF" de verdade
+    // (o pequeno, compartilhado pelo dia) pra extrair.
+    const temOP = colMap['OP'] != null;
+    const colId = temOP ? colMap['OP'] : colMap['OF'];
+    const op = String(row[colId] == null ? '' : row[colId]).trim();
     if (!cliente || !op) continue;
     const med = parseMedida(row[colMap['MEDIDA']]);
     if (!med) continue;
     linhas.push({
       cliente,
       op,
-      of: String(row[colMap['OF']] == null ? '' : row[colMap['OF']]).trim(),
+      of: temOP ? String(row[colMap['OF']] == null ? '' : row[colMap['OF']]).trim() : '',
       oc: String(row[colMap['OC']] == null ? '' : row[colMap['OC']]).trim(),
       data: dataArquivo,
       largMM: med.largMM, comprMM: med.comprMM,
@@ -370,7 +379,11 @@ async function extraiLinhasProducaoPDF(buf, arquivo) {
       });
 
       const cliente = (porColuna['CLIENTE'] || '').trim();
-      const op = (porColuna['OP'] || '').trim();
+      // relatórios antigos não têm coluna "OP" própria — nesse caso a coluna
+      // "OF" é que guarda o número do pedido, e não sobra um "OF" de verdade
+      // (o pequeno, compartilhado pelo dia) pra extrair.
+      const temOP = cols.some(c => c.nome === 'OP');
+      const op = (temOP ? (porColuna['OP'] || '') : (porColuna['OF'] || '')).trim();
       if (!cliente || !op) continue;
       const med = parseMedida(porColuna['MEDIDA']);
       if (!med) continue;
@@ -378,7 +391,7 @@ async function extraiLinhasProducaoPDF(buf, arquivo) {
       linhas.push({
         cliente,
         op,
-        of: (porColuna['OF'] || '').trim(),
+        of: temOP ? (porColuna['OF'] || '').trim() : '',
         oc: (porColuna['OC'] || '').trim(),
         data: dataArquivo,
         largMM: med.largMM, comprMM: med.comprMM,

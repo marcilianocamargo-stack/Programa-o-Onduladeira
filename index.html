@@ -2426,12 +2426,16 @@ function parseMedida(s) {
   return { largMM: Math.round(a * 1000), comprMM: Math.round(b * 1000) };
 }
 
-/* Assinatura da tabela "Resumo" (uma linha por OP/pedido). Inclui SALDO de
+/* Assinatura da tabela "Resumo" (uma linha por pedido). Inclui SALDO de
    propósito: a tabela "Produção" (detalhe por palete, uma linha por palete
-   produzido) tem as mesmas colunas OP/OC/OF/CLIENTE/MEDIDA mas não tem SALDO
-   — sem essa exigência, cada pedido entraria no índice repetido uma vez por
-   palete (até 20+ vezes), inflando a lista à toa. */
-const COLS_PRODUCAO = ['OP', 'OC', 'OF', 'CLIENTE', 'MEDIDA', 'SALDO'];
+   produzido) tem as mesmas colunas OC/CLIENTE/MEDIDA mas não tem SALDO — sem
+   essa exigência, cada pedido entraria no índice repetido uma vez por palete
+   (até 20+ vezes), inflando a lista à toa.
+   NÃO exige OP nem OF: relatórios mais antigos (ex.: antes de 09/07/2026) só
+   têm uma dessas duas colunas — a que existir guarda o número do pedido (ver
+   extraiLinhasProducaoXLSX/PDF). Exigir as duas deixava o arquivo inteiro
+   invisível pra busca quando faltava uma. */
+const COLS_PRODUCAO = ['OC', 'CLIENTE', 'MEDIDA', 'SALDO'];
 
 /* Lê os relatórios de produção da fábrica (.xlsx, abas "Produção" e/ou
    "Resumo") — acha a linha de cabeçalho procurando OP/OC/OF/Cliente/Medida
@@ -2458,7 +2462,10 @@ function extraiLinhasProducaoXLSX(sheet, arquivo) {
   for (let i = hIdx + 1; i < aoa.length; i++) {
     const row = aoa[i];
     const cliente = String(row[colMap['CLIENTE']] == null ? '' : row[colMap['CLIENTE']]).trim();
-    const op = String(row[colMap['OP']] == null ? '' : row[colMap['OP']]).trim();
+    // relatórios antigos não têm coluna "OP" — nesse caso "OF" guarda o
+    // número do pedido (ver comentário de COLS_PRODUCAO acima).
+    const colId = colMap['OP'] != null ? colMap['OP'] : colMap['OF'];
+    const op = String(row[colId] == null ? '' : row[colId]).trim();
     if (!cliente || !op) continue;
     const med = parseMedida(row[colMap['MEDIDA']]);
     if (!med) continue;
@@ -2532,7 +2539,9 @@ async function extraiLinhasProducaoPDF(buf, arquivo) {
       });
 
       const cliente = (porColuna['CLIENTE'] || '').trim();
-      const op = (porColuna['OP'] || '').trim();
+      // relatórios antigos não têm coluna "OP" — nesse caso "OF" guarda o
+      // número do pedido (ver comentário de COLS_PRODUCAO acima).
+      const op = (porColuna['OP'] || porColuna['OF'] || '').trim();
       if (!cliente || !op) continue;
       const med = parseMedida(porColuna['MEDIDA']);
       if (!med) continue;
