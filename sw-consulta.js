@@ -1,7 +1,7 @@
 /* Consulta OC Prime — service worker (app shell só, sem cache de dados —
    os dados sempre vêm das pastas locais via File System Access API).
    Para forçar atualização nos aparelhos: mude o número da versão e faça o commit. */
-const VERSAO = 'consulta-oc-v1';
+const VERSAO = 'consulta-oc-v2';
 const ARQUIVOS = ['consulta.html'];
 
 self.addEventListener('install', e => {
