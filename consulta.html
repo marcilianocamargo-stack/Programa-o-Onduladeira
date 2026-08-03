@@ -265,6 +265,15 @@ function dataCelula(v) {
   return String(v).trim();
 }
 
+/* Coluna do tipo de papel (ex.: P25B, P50D) — o nome varia entre arquivos:
+   "PAPEL" nos relatórios de produção, "P.O." na planilha de programação. */
+function colPapel(colMap) {
+  for (const k of ['PAPEL', 'P.O.', 'P.O', 'PO']) {
+    if (colMap[k] != null) return colMap[k];
+  }
+  return null;
+}
+
 /* "0,737 X 1,846" (metros, vírgula decimal) → { largMM, comprMM } */
 function parseMedida(s) {
   const m = String(s || '').trim().match(/^(\d+(?:[.,]\d+)?)\s*[x×X]\s*(\d+(?:[.,]\d+)?)$/);
@@ -301,6 +310,7 @@ function extraiLinhasProducaoXLSX(sheet, arquivo) {
   if (hIdx < 0) return [];
   const colQtde = colMap['QTDE PEDIDO'] != null ? colMap['QTDE PEDIDO'] : colMap['QTDE'];
   const colProduzido = colMap['PRODUZIDO'] != null ? colMap['PRODUZIDO'] : colMap['PRODUZID'];
+  const colPap = colPapel(colMap);
   const dataArquivo = dataDoNomeArquivo(arquivo);
   const linhas = [];
   for (let i = hIdx + 1; i < aoa.length; i++) {
@@ -320,6 +330,7 @@ function extraiLinhasProducaoXLSX(sheet, arquivo) {
       op,
       of: temOP ? String(row[colMap['OF']] == null ? '' : row[colMap['OF']]).trim() : '',
       oc: String(row[colMap['OC']] == null ? '' : row[colMap['OC']]).trim(),
+      papel: colPap != null ? String(row[colPap] == null ? '' : row[colPap]).trim() : '',
       data: dataArquivo,
       largMM: med.largMM, comprMM: med.comprMM,
       qtde: +row[colQtde] || 0,
@@ -388,11 +399,13 @@ async function extraiLinhasProducaoPDF(buf, arquivo) {
       const med = parseMedida(porColuna['MEDIDA']);
       if (!med) continue;
       const produzidoTxt = porColuna['PRODUZIDO'] || porColuna['PRODUZID'];
+      const colPapNome = (cols.find(c => ['PAPEL', 'P.O.', 'P.O', 'PO'].includes(c.nome)) || {}).nome;
       linhas.push({
         cliente,
         op,
         of: temOP ? (porColuna['OF'] || '').trim() : '',
         oc: (porColuna['OC'] || '').trim(),
+        papel: colPapNome ? (porColuna[colPapNome] || '').trim() : '',
         data: dataArquivo,
         largMM: med.largMM, comprMM: med.comprMM,
         qtde: parseInt(String(porColuna['QTDE PEDIDO'] || porColuna['QTDE'] || '').replace(/\D/g, ''), 10) || 0,
@@ -429,6 +442,7 @@ function extraiLinhasFilaXLSX(sheet, arquivo) {
     }
   }
   if (hIdx < 0 || colLarg == null || colCompr == null) return [];
+  const colPap = colPapel(colMap);
   const linhas = [];
   for (let i = hIdx + 1; i < aoa.length; i++) {
     const row = aoa[i];
@@ -441,6 +455,7 @@ function extraiLinhasFilaXLSX(sheet, arquivo) {
       op: String(row[colMap['OP']] == null ? '' : row[colMap['OP']]).trim(),
       of: ofTitulo,
       oc: String(row[colMap['OC']] == null ? '' : row[colMap['OC']]).trim(),
+      papel: colPap != null ? String(row[colPap] == null ? '' : row[colPap]).trim() : '',
       data: dataCelula(row[colMap['DATA PEDIDO']]),
       largMM: Math.round(larg * 1000), comprMM: Math.round(compr * 1000),
       qtde: +row[colMap['QTDE PEDIDO']] || 0,
@@ -582,7 +597,7 @@ function linhaItem(l) {
     ? l.qtde + ' pedidas · ' + l.produzido + ' produzidas'
     : l.qtde + ' chapas';
   return '<div class="itemAchado"><b>' + l.cliente + '</b>' +
-    '<span>' + (l.of ? 'OF ' + l.of + ' · ' : '') + (l.oc ? 'OC ' + l.oc + ' · ' : '') + (l.op ? 'OP ' + l.op + ' · ' : '') +
+    '<span>' + (l.of ? 'OF ' + l.of + ' · ' : '') + (l.oc ? 'OC ' + l.oc + ' · ' : '') + (l.op ? 'OP ' + l.op + ' · ' : '') + (l.papel ? l.papel + ' · ' : '') +
     l.largMM + '×' + l.comprMM + ' mm · ' + qtdeTxt +
     (l.data ? ' · ' + l.data : '') + ' · <i>' + l.arquivo + '</i></span></div>';
 }
@@ -636,7 +651,7 @@ function nomeClienteRelatorio(lista) {
 function exportaRelatorioProduzidos() {
   if (!ultimoAchadosProduzido.length) { alert('Nenhum item já produzido pra exportar. Faça uma busca primeiro.'); return; }
 
-  const HEAD = ['Arquivo Fonte', 'Cliente', 'OP', 'OC', 'OF', 'Medida', 'Qtd Produzida', 'Qtd Pedido', 'Saldo'];
+  const HEAD = ['Arquivo Fonte', 'Cliente', 'OP', 'OC', 'OF', 'Papel', 'Medida', 'Qtd Produzida', 'Qtd Pedido', 'Saldo'];
   const brd = { style: 'thin', color: { rgb: 'CCD8E4' } };
   const b4 = { top: brd, bottom: brd, left: brd, right: brd };
   const aoa = [], estilos = {};
@@ -659,13 +674,13 @@ function exportaRelatorioProduzidos() {
     const saldo = l.produzido != null ? (l.produzido - l.qtde) : 0;
     totProduzida += produzida; totPedido += l.qtde; totSaldo += saldo;
     const medidaTxt = String(l.largMM).padStart(4, '0') + ' X ' + String(l.comprMM).padStart(4, '0');
-    addRow([l.arquivo, l.cliente, l.op || '-', l.oc || '-', l.of || '-', medidaTxt, produzida, l.qtde, saldo],
-      ci => ({ border: b4, alignment: { horizontal: ci >= 6 ? 'right' : 'left' } }));
+    addRow([l.arquivo, l.cliente, l.op || '-', l.oc || '-', l.of || '-', l.papel || '-', medidaTxt, produzida, l.qtde, saldo],
+      ci => ({ border: b4, alignment: { horizontal: ci >= 7 ? 'right' : 'left' } }));
   });
 
-  addRow(['', '', '', '', '', 'Total', totProduzida, totPedido, totSaldo], ci => ({
+  addRow(['', '', '', '', '', '', 'Total', totProduzida, totPedido, totSaldo], ci => ({
     font: { bold: true }, fill: { fgColor: { rgb: 'DBE7F3' } }, border: b4,
-    alignment: { horizontal: ci >= 6 ? 'right' : 'left' }
+    alignment: { horizontal: ci >= 7 ? 'right' : 'left' }
   }));
 
   const agora = new Date();
@@ -677,7 +692,7 @@ function exportaRelatorioProduzidos() {
 
   const ws = XLSX.utils.aoa_to_sheet(aoa);
   Object.entries(estilos).forEach(([ref, s]) => { if (ws[ref]) ws[ref].s = s; });
-  ws['!cols'] = [{ wch: 42 }, { wch: 22 }, { wch: 10 }, { wch: 10 }, { wch: 8 }, { wch: 14 }, { wch: 13 }, { wch: 11 }, { wch: 9 }];
+  ws['!cols'] = [{ wch: 42 }, { wch: 22 }, { wch: 10 }, { wch: 10 }, { wch: 8 }, { wch: 8 }, { wch: 14 }, { wch: 13 }, { wch: 11 }, { wch: 9 }];
   ws['!merges'] = [{ s: { r: rNota, c: 0 }, e: { r: rNota, c: HEAD.length - 1 } }];
 
   const wb = XLSX.utils.book_new();
@@ -696,7 +711,7 @@ function exportaRelatorioProduzidos() {
 function exportaRelatorioFila() {
   if (!ultimoAchadosFila.length) { alert('Nenhum item na fila pra exportar. Faça uma busca primeiro.'); return; }
 
-  const HEAD = ['Arquivo Fonte', 'Cliente', 'OP', 'OC', 'OF', 'Medida', 'Qtd Pedido', 'Data Pedido'];
+  const HEAD = ['Arquivo Fonte', 'Cliente', 'OP', 'OC', 'OF', 'Papel', 'Medida', 'Qtd Pedido', 'Data Pedido'];
   const brd = { style: 'thin', color: { rgb: 'CCD8E4' } };
   const b4 = { top: brd, bottom: brd, left: brd, right: brd };
   const aoa = [], estilos = {};
@@ -717,13 +732,13 @@ function exportaRelatorioFila() {
   ultimoAchadosFila.forEach(l => {
     totPedido += l.qtde;
     const medidaTxt = String(l.largMM).padStart(4, '0') + ' X ' + String(l.comprMM).padStart(4, '0');
-    addRow([l.arquivo, l.cliente, l.op || '-', l.oc || '-', l.of || '-', medidaTxt, l.qtde, l.data || '-'],
-      ci => ({ border: b4, alignment: { horizontal: ci === 6 ? 'right' : 'left' } }));
+    addRow([l.arquivo, l.cliente, l.op || '-', l.oc || '-', l.of || '-', l.papel || '-', medidaTxt, l.qtde, l.data || '-'],
+      ci => ({ border: b4, alignment: { horizontal: ci === 7 ? 'right' : 'left' } }));
   });
 
-  addRow(['', '', '', '', '', 'Total', totPedido, ''], ci => ({
+  addRow(['', '', '', '', '', '', 'Total', totPedido, ''], ci => ({
     font: { bold: true }, fill: { fgColor: { rgb: 'FFF3CD' } }, border: b4,
-    alignment: { horizontal: ci === 6 ? 'right' : 'left' }
+    alignment: { horizontal: ci === 7 ? 'right' : 'left' }
   }));
 
   const agora = new Date();
@@ -735,7 +750,7 @@ function exportaRelatorioFila() {
 
   const ws = XLSX.utils.aoa_to_sheet(aoa);
   Object.entries(estilos).forEach(([ref, s]) => { if (ws[ref]) ws[ref].s = s; });
-  ws['!cols'] = [{ wch: 42 }, { wch: 22 }, { wch: 10 }, { wch: 10 }, { wch: 8 }, { wch: 14 }, { wch: 11 }, { wch: 13 }];
+  ws['!cols'] = [{ wch: 42 }, { wch: 22 }, { wch: 10 }, { wch: 10 }, { wch: 8 }, { wch: 8 }, { wch: 14 }, { wch: 11 }, { wch: 13 }];
   ws['!merges'] = [{ s: { r: rNota, c: 0 }, e: { r: rNota, c: HEAD.length - 1 } }];
 
   const wb = XLSX.utils.book_new();
