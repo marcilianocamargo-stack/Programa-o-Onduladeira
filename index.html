@@ -223,7 +223,7 @@ details .corpo{padding:10px 0}
         <input type="hidden" id="fEditId">
         <div class="row">
           <div><label>Data do pedido</label><input type="date" id="fData" required oninput="verificaDuplicidade()"></div>
-          <div><label>Nº da OP</label><input type="number" id="fOF" inputmode="numeric" required></div>
+          <div><label>Nº da OP</label><input type="number" id="fOF" inputmode="numeric" required readonly style="background:var(--papel);color:var(--tinta2)"></div>
           <div><label>OC (ordem de compra)</label><input id="fOC" autocomplete="off" placeholder="—" oninput="verificaDuplicidade()"></div>
         </div>
         <div class="nota" id="ofCentralView"></div>
@@ -410,7 +410,7 @@ const KEY = 'prime_of_v1';
 const SEED = {
   params: { velocidade: 60, fatorMiolo: 1.3, colaSimples: 15, colaDupla: 20,
     formatos: Array.from({ length: 19 }, (_, i) => 700 + i * 50),  // 700 a 1600, de 50 em 50
-    limites: { largMin: 300, largMax: 1370, comprMin: 0, comprMax: 3000, vincoMin: 50 },
+    limites: { largMin: 300, largMax: 1370, comprMin: 500, comprMax: 3000, vincoMin: 55 },
     palete: { altura: 1220, multB: 33, multC: 26, multD: 16, sobra: 200, padroes: [1000, 1100] } },
   papeis: [
     { cod: 'TLQ95',  g: 95,  rct: 11 },
@@ -503,18 +503,30 @@ function carrega() {
     if (db.ofAtual === undefined) db.ofAtual = null;
     db.v = 6;
   }
+  if (db.v < 7) {  // migração: comprimento mínimo do facão (500 mm) e largura mínima do slitter (55 mm)
+    db.params.limites.comprMin = 500;
+    db.params.limites.vincoMin = 55;
+    db.v = 7;
+  }
+  if (db.v < 8) {  // migração: OP sequencial e imutável, gerada localmente (só este computador)
+    if (db.ultimaOP === undefined) db.ultimaOP = 262109; // próxima OP a ser usada: 262110
+    db.v = 8;
+  }
   salva();
 }
 function salva() { localStorage.setItem(KEY, JSON.stringify(db)); }
 
 /* ---------- OF única por programação / OP única por pedido (exigência FSC) ----------
    O nº de OF é diferente do nº de OP (coluna "OP" da planilha, campo "Nº da OP"
-   do form — já é outra numeração, não mexer nela). Os dois contadores ficam num
-   arquivo central (of-counter.json / op-counter.json) no repositório
-   controle-producao-etiquetas, lidos/incrementados/gravados por um Cloudflare
-   Worker — o token do GitHub fica só no Worker, nunca neste código público
-   (um token embutido aqui é sempre revogado automaticamente pelo GitHub).
-   Nunca em localStorage — assim dois aparelhos nunca reservam o mesmo número. */
+   do form — já é outra numeração, não mexer nela).
+   A OF continua num contador central (of-counter.json no repositório
+   controle-producao-etiquetas, lido/incrementado/gravado por um Cloudflare
+   Worker) porque a máquina pode ser operada de mais de um aparelho.
+   Já a OP só é usada neste computador, então o contador dela é local
+   (db.ultimaOP, salvo no localStorage): sequencial, imutável e irrepetível —
+   o campo "Nº da OP" nunca é digitado pelo operador, só mostra o próximo
+   número, e o valor definitivo só é gravado (e o contador avançado) no
+   momento de salvar. */
 const CONTADOR_WORKER_URL = 'https://sparkling-voice-98b7nduladeira-contador.marciliano-camargo.workers.dev';
 
 /* Reserva uma OF nova no contador central — antes de liberar o lançamento
@@ -526,29 +538,18 @@ async function obterNovaOFCentral() {
   return j.ofNumero;
 }
 
-/* Só leitura — usada para pré-preencher o campo com a próxima OP sugerida,
-   sem reservar nada ainda (a reserva de verdade só acontece ao salvar). */
-async function sugereProximaOPCentral() {
-  const resp = await fetch(CONTADOR_WORKER_URL + '/op/sugestao');
-  const j = await resp.json().catch(() => ({}));
-  if (!resp.ok || j.erro) throw new Error(j.erro || ('Falha ao buscar sugestão de OP (HTTP ' + resp.status + ').'));
-  return j.proximaOP;
-}
+/* Próxima OP local — só leitura, usada para mostrar no campo (não editável)
+   qual será o número. O avanço definitivo do contador só acontece ao salvar,
+   em reservaOpLocal(). */
+function proximaOpLocal() { return (db.ultimaOP || 0) + 1; }
 
-/* Reserva no contador central a OP escolhida (a sugerida ou uma digitada por
-   cima). Se for maior que o último valor conhecido, avança o contador até
-   ela (garante que nenhum outro aparelho repita esse número ou um menor).
-   Se for menor ou igual, não mexe no contador (pode ser lançamento de pedido
-   atrasado com nº antigo de propósito) mas avisa que pode já ter sido usada. */
-async function reservaOpCentral(opEscolhida) {
-  const resp = await fetch(CONTADOR_WORKER_URL + '/op/reservar', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ opEscolhida })
-  });
-  const j = await resp.json().catch(() => ({}));
-  if (!resp.ok || j.erro) throw new Error(j.erro || ('Falha ao confirmar a OP (HTTP ' + resp.status + ').'));
-  return j;
+/* Reserva (avança) o contador local da OP e devolve o número reservado.
+   Sempre sequencial a partir do último valor conhecido — sem depender de
+   rede nem de nº digitado, então nunca repete e nunca fica menor. */
+function reservaOpLocal() {
+  db.ultimaOP = proximaOpLocal();
+  salva();
+  return db.ultimaOP;
 }
 
 /* ---------- utilitários ---------- */
@@ -843,7 +844,7 @@ function recalcula() {
   const fora = [];
   if (of.larg && L.largMin && of.larg < L.largMin) fora.push('largura abaixo do mínimo da máquina (' + L.largMin + ' mm)');
   if (of.larg && L.largMax && of.larg > L.largMax) fora.push('largura acima do máximo da máquina (' + L.largMax + ' mm)');
-  if (of.compr && L.comprMin && of.compr < L.comprMin) fora.push('comprimento abaixo do mínimo (' + L.comprMin + ' mm)');
+  if (of.compr && L.comprMin && of.compr < L.comprMin) fora.push('comprimento de ' + of.compr + ' mm — abaixo de ' + L.comprMin + ' mm o nosso facão não faz');
   if (of.compr && L.comprMax && of.compr > L.comprMax) fora.push('comprimento acima do máximo (' + L.comprMax + ' mm)');
   $('avisoLimites').innerHTML = fora.length
     ? '<div class="aviso ruim">⚠️ Fora dos limites técnicos: ' + fora.join('; ') + '.</div>' : '';
@@ -936,22 +937,7 @@ async function salvaOF(ev) {
       btn.disabled = false; btn.textContent = txtOrig;
     }
     of.ofFsc = db.ofAtual;
-
-    const btn2 = $('btnSalvar'), txtOrig2 = btn2.textContent;
-    btn2.disabled = true; btn2.textContent = 'Confirmando OP...';
-    try {
-      const r = await reservaOpCentral(+of.of || 0);
-      if (!r.avancou) {
-        const seguir = confirm('A OP ' + of.of + ' pode já ter sido usada — o contador central já está em ' +
-          r.ultimaConhecida + '. Registrar mesmo assim?');
-        if (!seguir) { btn2.disabled = false; btn2.textContent = txtOrig2; return false; }
-      }
-    } catch (e) {
-      alert('Não foi possível confirmar a OP no contador central. Verifique a internet e tente novamente.\n\n' + e.message);
-      btn2.disabled = false; btn2.textContent = txtOrig2;
-      return false;
-    }
-    btn2.disabled = false; btn2.textContent = txtOrig2;
+    of.of = reservaOpLocal();
 
     of.id = Date.now() + '-' + Math.random().toString(36).slice(2, 7);
     db.ofs.push(of);
@@ -982,18 +968,10 @@ function limpaForm() {
   if (av) av.innerHTML = '';
 }
 
-/* Pré-preenche o campo (só sugestão, não reserva nada) com a próxima OP do
-   contador central. Se falhar (sem internet etc.), cai de volta na conta
-   local de sempre — o campo continua editável, o operador corrige se precisar. */
-async function sugereOP() {
-  const campo = $('fOF');
-  try {
-    const prox = await sugereProximaOPCentral();
-    if (!campo.value) campo.value = prox;
-  } catch (e) {
-    const max = db.ofs.reduce((m, o) => Math.max(m, +o.of || 0), 0);
-    if (max && !campo.value) campo.value = max + 1;
-  }
+/* Mostra no campo (não editável) qual vai ser a próxima OP — só exibição,
+   o número definitivo só é reservado em reservaOpLocal() ao salvar. */
+function sugereOP() {
+  $('fOF').value = proximaOpLocal();
 }
 
 function atualizaOfCentralView() {
@@ -2119,11 +2097,12 @@ async function mostraItemFila(idx) {
 }
 
 /* Preenche o formulário da OF com dados vindos de um JSON exportado pelo OCR.
-   Chaves suportadas (todas opcionais): cliente, of, oc, qtde, larg, compr, vinco, data, produto, onda
+   Chaves suportadas (todas opcionais): cliente, oc, qtde, larg, compr, vinco, data, produto, onda
+   (o nº da OP nunca vem do OCR — é sempre gerado localmente, ver sugereOP()).
    "data" já vem em ISO (aaaa-mm-dd) — ver achaDataPedido()/parseDataBR(). Se o
    OCR não trouxer data, o campo mantém o valor padrão (hoje) e o operador corrige. */
 function autoPreencheFila(dados) {
-  const mapa = { cliente:'fCliente', of:'fOF', oc:'fOC', qtde:'fQtde',
+  const mapa = { cliente:'fCliente', oc:'fOC', qtde:'fQtde',
                  larg:'fLarg', compr:'fCompr', vinco:'fVinco', data:'fData' };
   let tocou = false;
   Object.entries(mapa).forEach(([k, id]) => {
