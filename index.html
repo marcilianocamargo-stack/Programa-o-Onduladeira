@@ -409,7 +409,7 @@ const KEY = 'prime_of_v1';
 
 const SEED = {
   params: { velocidade: 60, fatorMiolo: 1.3, colaSimples: 15, colaDupla: 20,
-    formatos: Array.from({ length: 19 }, (_, i) => 700 + i * 50),  // 700 a 1600, de 50 em 50
+    formatos: Array.from({ length: 23 }, (_, i) => 500 + i * 50),  // 500 a 1600, de 50 em 50
     limites: { largMin: 300, largMax: 1370, comprMin: 500, comprMax: 3000, vincoMin: 55 },
     palete: { altura: 1220, multB: 33, multC: 26, multD: 16, sobra: 200, padroes: [1000, 1100] } },
   papeis: [
@@ -511,6 +511,11 @@ function carrega() {
   if (db.v < 8) {  // migração: OP sequencial e imutável, gerada localmente (só este computador)
     if (db.ultimaOP === undefined) db.ultimaOP = 262109; // próxima OP a ser usada: 262110
     db.v = 8;
+  }
+  if (db.v < 9) {  // migração: formatos de bobina menores (500/550/600/650) — máquina passou a rodar com bobina de 500
+    [500, 550, 600, 650].forEach(f => { if (!db.params.formatos.includes(f)) db.params.formatos.push(f); });
+    db.params.formatos.sort((a, b) => a - b);
+    db.v = 9;
   }
   salva();
 }
@@ -1255,9 +1260,6 @@ function exportaXLSXporOC() {
 function _exportaXLSX(opcoes) {
   if (!db.ofs.length) { alert('Não há OFs para exportar.'); return; }
 
-  const porDia = {};
-  db.ofs.forEach(o => { (porDia[o.data] = porDia[o.data] || []).push(o); });
-
   const clientesSet = new Set();
   db.ofs.forEach(o => { if (!o.cancelada) clientesSet.add(o.cliente); });
   const clientesStr = [...clientesSet].join(' - ') || 'Sem cliente';
@@ -1308,46 +1310,44 @@ function _exportaXLSX(opcoes) {
     fill:{ fgColor:{ rgb:C.hbg } }, border:b4,
     alignment:{ horizontal:'center', wrapText:true, vertical:'center' }
   }));
-  // Dados — data → cliente → onda → bobina
+  // Dados — tudo é a mesma OF, então a data do pedido não entra na ordem:
+  // prioridade é tipo de papel (onda) → bobina → cliente → vinco.
   let seq2 = 0;
   let totQtde2 = 0, totKg2 = 0;
-  Object.keys(porDia).sort().forEach(dia => {
-    const ativos2 = porDia[dia].filter(o => !o.cancelada);
-    if (!ativos2.length) return;
-    (opcoes.sortFn || sortOFsDia)(ativos2).forEach(o => {
-      const cc2 = calcOF(o);
-      seq2++;
-      totQtde2 += o.qtde || 0;
-      totKg2   += cc2.kg || 0;
-      const largM   = +(o.larg / 1000).toFixed(3);
-      const comprM  = +(o.compr / 1000).toFixed(3);
-      const luM     = +((o.larg / 1000) * o.arranjo).toFixed(3);
-      const ponta   = o.bobina - o.larg * o.arranjo;           // mm
-      const refile  = o.bobina ? +(ponta / o.bobina).toFixed(4) : '';
-      const pps     = o.papeis || [];
-      addRow2([
-        seq2, o.cliente, poCodigo(o), dataBR(o.data), '',
-        +o.of, o.oc || '', o.qtde,
-        largM, comprM, o.vinco,
-        +cc2.m2.toFixed(3),
-        cc2.ml  != null ? +cc2.ml.toFixed(1)         : '',
-        cc2.min != null ? +(cc2.min/60).toFixed(4)   : '',
-        cc2.min != null ? +cc2.min.toFixed(2)         : '',
-        cc2.kg  != null ? +cc2.kg.toFixed(1)          : '',
-        o.arranjo, o.bobina,
-        luM, +ponta.toFixed(0), refile,
-        pps[0]||'', pps[1]||'', pps[2]||'', pps[3]||'', pps[4]||'',
-        o.palQtde || '', o.palMed || ''
-      ], ci => ({
-        font:{ bold: ci===1 },
-        fill:{ fgColor:{ rgb:'FFFFFF' } }, border:b4,
-        alignment:{ horizontal: ci>=11 ? 'right' : 'left' },
-        numFmt: (ci===8||ci===9||ci===18) ? '0.000' :
-                ci===11 ? '0.000' : ci===12 ? '0.0' :
-                ci===13 ? '0.0000' : ci===14 ? '0.00' :
-                ci===20 ? '0.0000' : undefined
-      }));
-    });
+  const ativos2 = db.ofs.filter(o => !o.cancelada);
+  (opcoes.sortFn || sortOFsDia)(ativos2).forEach(o => {
+    const cc2 = calcOF(o);
+    seq2++;
+    totQtde2 += o.qtde || 0;
+    totKg2   += cc2.kg || 0;
+    const largM   = +(o.larg / 1000).toFixed(3);
+    const comprM  = +(o.compr / 1000).toFixed(3);
+    const luM     = +((o.larg / 1000) * o.arranjo).toFixed(3);
+    const ponta   = o.bobina - o.larg * o.arranjo;           // mm
+    const refile  = o.bobina ? +(ponta / o.bobina).toFixed(4) : '';
+    const pps     = o.papeis || [];
+    addRow2([
+      seq2, o.cliente, poCodigo(o), dataBR(o.data), '',
+      +o.of, o.oc || '', o.qtde,
+      largM, comprM, o.vinco,
+      +cc2.m2.toFixed(3),
+      cc2.ml  != null ? +cc2.ml.toFixed(1)         : '',
+      cc2.min != null ? +(cc2.min/60).toFixed(4)   : '',
+      cc2.min != null ? +cc2.min.toFixed(2)         : '',
+      cc2.kg  != null ? +cc2.kg.toFixed(1)          : '',
+      o.arranjo, o.bobina,
+      luM, +ponta.toFixed(0), refile,
+      pps[0]||'', pps[1]||'', pps[2]||'', pps[3]||'', pps[4]||'',
+      o.palQtde || '', o.palMed || ''
+    ], ci => ({
+      font:{ bold: ci===1 },
+      fill:{ fgColor:{ rgb:'FFFFFF' } }, border:b4,
+      alignment:{ horizontal: ci>=11 ? 'right' : 'left' },
+      numFmt: (ci===8||ci===9||ci===18) ? '0.000' :
+              ci===11 ? '0.000' : ci===12 ? '0.0' :
+              ci===13 ? '0.0000' : ci===14 ? '0.00' :
+              ci===20 ? '0.0000' : undefined
+    }));
   });
   // Linha de totais
   const rTot2 = addRow2(['','','','','', '', '', totQtde2, '','','', '','','','', +totKg2.toFixed(1)],
