@@ -613,14 +613,67 @@ function renderResultado(produzidos, fila) {
   if (produzidos.length) {
     html += '<div class="resultado produzido"><h3>✅ Já produzido</h3>' +
       produzidos.map(linhaItem).join('') +
-      '<button type="button" class="btn mini sec" style="margin-top:10px" onclick="exportaRelatorioProduzidos()">📄 Gerar relatório (Excel)</button></div>';
+      '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">' +
+      '<button type="button" class="btn mini sec" onclick="exportaRelatorioProduzidos()">📄 Gerar relatório (Excel)</button>' +
+      '<button type="button" class="btn mini sec" onclick="copiaAchadosProduzidos(this)">📋 Copiar linhas</button>' +
+      '</div></div>';
   }
   if (fila.length) {
     html += '<div class="resultado fila"><h3>🟡 Na fila — ainda não produzido</h3>' +
       fila.map(linhaItem).join('') +
-      '<button type="button" class="btn mini sec" style="margin-top:10px" onclick="exportaRelatorioFila()">📄 Gerar relatório (Excel)</button></div>';
+      '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">' +
+      '<button type="button" class="btn mini sec" onclick="exportaRelatorioFila()">📄 Gerar relatório (Excel)</button>' +
+      '<button type="button" class="btn mini sec" onclick="copiaAchadosFila(this)">📋 Copiar linhas</button>' +
+      '</div></div>';
   }
   box.innerHTML = html;
+}
+
+/* ---------- copiar linhas (pra colar em relatório já aberto) ----------
+   Mesmas colunas dos relatórios Excel acima, mas sem cabeçalho nem total —
+   só as linhas de dado, pra colar embaixo de um relatório que já foi
+   gerado antes (útil quando a busca é feita medida por medida: gera o
+   primeiro relatório em Excel, e só copia+cola as linhas das medidas
+   seguintes por cima). */
+function copiaFallback(texto, cb) {
+  const ta = document.createElement('textarea');
+  ta.value = texto; ta.style.cssText = 'position:fixed;opacity:0';
+  document.body.appendChild(ta); ta.select();
+  try { document.execCommand('copy'); cb(); } catch (e) { alert('Não foi possível copiar automaticamente.'); }
+  document.body.removeChild(ta);
+}
+function copiaTexto(texto, ok) {
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(texto).then(ok).catch(() => copiaFallback(texto, ok));
+  } else copiaFallback(texto, ok);
+}
+function avisaCopiado(btn) {
+  if (!btn) return;
+  const t = btn.textContent;
+  btn.textContent = 'Copiado!';
+  setTimeout(() => { btn.textContent = t; }, 1800);
+}
+function linhasTSVProduzidos(lista) {
+  return lista.map(l => {
+    const produzida = l.produzido != null ? l.produzido : 0;
+    const saldo = l.produzido != null ? (l.produzido - l.qtde) : 0;
+    const medidaTxt = String(l.largMM).padStart(4, '0') + ' X ' + String(l.comprMM).padStart(4, '0');
+    return [l.arquivo, l.cliente, l.op || '-', l.oc || '-', l.of || '-', l.papel || '-', medidaTxt, produzida, l.qtde, saldo].join('\t');
+  }).join('\n');
+}
+function linhasTSVFila(lista) {
+  return lista.map(l => {
+    const medidaTxt = String(l.largMM).padStart(4, '0') + ' X ' + String(l.comprMM).padStart(4, '0');
+    return [l.arquivo, l.cliente, l.op || '-', l.oc || '-', l.of || '-', l.papel || '-', medidaTxt, l.qtde, l.data || '-'].join('\t');
+  }).join('\n');
+}
+function copiaAchadosProduzidos(btn) {
+  if (!ultimoAchadosProduzido.length) { alert('Nenhum item já produzido pra copiar. Faça uma busca primeiro.'); return; }
+  copiaTexto(linhasTSVProduzidos(ultimoAchadosProduzido), () => avisaCopiado(btn));
+}
+function copiaAchadosFila(btn) {
+  if (!ultimoAchadosFila.length) { alert('Nenhum item na fila pra copiar. Faça uma busca primeiro.'); return; }
+  copiaTexto(linhasTSVFila(ultimoAchadosFila), () => avisaCopiado(btn));
 }
 
 function baixa(blob, nome) {
