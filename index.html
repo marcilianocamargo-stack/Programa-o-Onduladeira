@@ -1514,11 +1514,15 @@ function copiaLinhaOF(id) {
   const o = db.ofs.find(x => x.id === id);
   if (!o) return;
   const cc  = calcOF(o);
-  const largM  = (o.larg / 1000).toFixed(3);
-  const comprM = (o.compr / 1000).toFixed(3);
-  const luM    = ((o.larg / 1000) * o.arranjo).toFixed(3);
+  // Excel em pt-BR usa vírgula como separador decimal — number.toFixed() sempre
+  // devolve ponto, então convertemos aqui antes de colar (senão o Excel recebe
+  // o número como texto e perde a formatação/o valor numérico).
+  const virg = s => s.replace('.', ',');
+  const largM  = virg((o.larg / 1000).toFixed(3));
+  const comprM = virg((o.compr / 1000).toFixed(3));
+  const luM    = virg(((o.larg / 1000) * o.arranjo).toFixed(3));
   const ponta  = o.bobina - o.larg * o.arranjo;
-  const refile = o.bobina ? (ponta / o.bobina).toFixed(4) : '';
+  const refile = o.bobina ? virg((ponta / o.bobina).toFixed(4)) : '';
   const pps    = o.papeis || [];
   // Colunas na mesma ordem da aba tabela_limpa do Excel exportado:
   // Seq.Prod | Cliente | P.O. | Data Prod | Qtde.Prod. | OP | OC | Qtde Pedido
@@ -1537,11 +1541,11 @@ function copiaLinhaOF(id) {
     largM,
     comprM,
     o.vinco,
-    cc.m2  != null ? cc.m2.toFixed(3)       : '',
-    cc.ml  != null ? cc.ml.toFixed(1)        : '',
-    cc.min != null ? (cc.min/60).toFixed(4)  : '',
-    cc.min != null ? cc.min.toFixed(2)       : '',
-    cc.kg  != null ? cc.kg.toFixed(1)        : '',
+    cc.m2  != null ? virg(cc.m2.toFixed(3))       : '',
+    cc.ml  != null ? virg(cc.ml.toFixed(1))        : '',
+    cc.min != null ? virg((cc.min/60).toFixed(4))  : '',
+    cc.min != null ? virg(cc.min.toFixed(2))       : '',
+    cc.kg  != null ? virg(cc.kg.toFixed(1))        : '',
     o.arranjo,
     o.bobina,
     luM,
