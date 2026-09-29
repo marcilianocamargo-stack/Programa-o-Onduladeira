@@ -308,7 +308,6 @@ details .corpo{padding:10px 0}
         <div class="row">
           <div><label>Compr. mín.</label><input type="number" id="pComprMin"></div>
           <div><label>Compr. máx.</label><input type="number" id="pComprMax"></div>
-          <div><label>Vinco mín.</label><input type="number" id="pVincoMin"></div>
         </div>
         <div class="row">
           <div><label>Altura pilha (mm)</label><input type="number" id="pPilhaAlt"></div>
@@ -410,7 +409,7 @@ const KEY = 'prime_of_v1';
 const SEED = {
   params: { velocidade: 60, fatorMiolo: 1.3, colaSimples: 15, colaDupla: 20,
     formatos: Array.from({ length: 23 }, (_, i) => 500 + i * 50),  // 500 a 1600, de 50 em 50
-    limites: { largMin: 280, largMax: 1580, comprMin: 300, comprMax: 3000, vincoMin: 55 },
+    limites: { largMin: 280, largMax: 1580, comprMin: 300, comprMax: 3000 },
     palete: { altura: 1220, multB: 33, multC: 26, multD: 16, sobra: 200, padroes: [1000, 1100] } },
   papeis: [
     { cod: 'TLQ95',  g: 95,  rct: 11 },
@@ -522,6 +521,10 @@ function carrega() {
     db.params.limites.largMax = 1580;
     db.params.limites.comprMin = 300;
     db.v = 10;
+  }
+  if (db.v < 11) {  // migração: nova vincadeira não tem distância mínima entre vincos
+    db.params.limites.vincoMin = 0;
+    db.v = 11;
   }
   salva();
 }
@@ -884,8 +887,6 @@ function recalcula() {
   let avV = '';
   if (!v.ok && v.soma != null)
     avV = '<div class="aviso ruim">A soma dos vincos (' + v.soma + ' mm) não fecha com a largura (' + of.larg + ' mm). Confira as posições.</div>';
-  else if (v.soma != null && v.minDist != null && L.vincoMin && v.minDist < L.vincoMin)
-    avV = '<div class="aviso ruim">Distância entre vincos de ' + v.minDist + ' mm — mínimo da máquina é ' + L.vincoMin + ' mm.</div>';
   else if (nv > 0 && nv * of.arranjo > LIMITE_VINCOS)
     avV = '<div class="aviso ruim">⚠️ Este arranjo precisa de ' + (nv * of.arranjo) +
       ' vincos (' + nv + ' × ' + of.arranjo + '), mas a máquina tem no máximo ' + LIMITE_VINCOS +
@@ -1589,7 +1590,6 @@ function desenhaTabelas() {
   const L = db.params.limites || {};
   $('pLargMin').value = L.largMin || ''; $('pLargMax').value = L.largMax || '';
   $('pComprMin').value = L.comprMin || ''; $('pComprMax').value = L.comprMax || '';
-  $('pVincoMin').value = L.vincoMin || '';
   const PA = db.params.palete || {};
   $('pPilhaAlt').value = PA.altura || ''; $('pMultB').value = PA.multB || '';
   $('pMultC').value = PA.multC || ''; $('pMultD').value = PA.multD || '';
@@ -1668,8 +1668,7 @@ function salvaParams() {
   db.params.formatos = $('pFormatos').value.split(/[,;\s]+/).map(Number).filter(n => n > 0).sort((a, b) => a - b);
   db.params.limites = {
     largMin: +$('pLargMin').value || 0, largMax: +$('pLargMax').value || 0,
-    comprMin: +$('pComprMin').value || 0, comprMax: +$('pComprMax').value || 0,
-    vincoMin: +$('pVincoMin').value || 0
+    comprMin: +$('pComprMin').value || 0, comprMax: +$('pComprMax').value || 0
   };
   db.params.palete = {
     altura: +$('pPilhaAlt').value || 1220,
