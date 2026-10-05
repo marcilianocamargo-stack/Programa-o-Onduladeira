@@ -409,7 +409,7 @@ const KEY = 'prime_of_v1';
 const SEED = {
   params: { velocidade: 60, fatorMiolo: 1.3, colaSimples: 15, colaDupla: 20,
     formatos: Array.from({ length: 23 }, (_, i) => 500 + i * 50),  // 500 a 1600, de 50 em 50
-    limites: { largMin: 280, largMax: 1580, comprMin: 300, comprMax: 3000 },
+    limites: { largMin: 280, largMax: 1580, comprMin: 500, comprMax: 3000 },
     palete: { altura: 1220, multB: 33, multC: 26, multD: 16, sobra: 200, padroes: [1000, 1100] } },
   papeis: [
     { cod: 'TLQ95',  g: 95,  rct: 11 },
@@ -525,6 +525,10 @@ function carrega() {
   if (db.v < 11) {  // migração: nova vincadeira não tem distância mínima entre vincos
     db.params.limites.vincoMin = 0;
     db.v = 11;
+  }
+  if (db.v < 12) {  // migração: comprimento mínimo da máquina passou a ser 500 mm
+    db.params.limites.comprMin = 500;
+    db.v = 12;
   }
   salva();
 }
