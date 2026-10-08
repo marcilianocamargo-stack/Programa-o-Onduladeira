@@ -207,8 +207,7 @@ const URL_VIVA = BASE_DADOS + 'producao-viva.json';
 const URL_ANTIGA = BASE_DADOS + 'producao-antiga.json';
 const URL_FILA = BASE_DADOS + 'programacao-hoje.xlsx';
 const REFRESH_MS = 60000;
-const ARQ_VIVA = 'Tempo real (app de produção)';
-const ARQ_ANTIGA = 'Relatórios de turno (histórico)';
+const ARQ_PRODUCAO = 'Controle de Produção'; // vai na coluna "Arquivo Fonte" do Excel/cópia (no cartão não aparece)
 
 let indiceProducao = null;   // [{cliente, op, of, oc, papel, data, largMM, comprMM, qtde, produzido, arquivo, status:'produzido'}]
 let indiceFila = null;       // mesma forma, status:'fila'
@@ -227,33 +226,34 @@ async function pegaJSON(url) {
 function itemParaLinha(i, arquivo) {
   return {
     cliente: i.cliente || '', op: String(i.op || ''), of: i.of || '', oc: i.oc || '', papel: i.papel || '',
-    data: i.data || '', largMM: i.larg, comprMM: i.comp, qtde: i.qtde || 0, produzido: i.prod || 0,
+    data: i.data || '', hora: i.hora || '', largMM: i.larg, comprMM: i.comp, qtde: i.qtde || 0, produzido: i.prod || 0,
     arquivo, status: 'produzido'
   };
 }
 
-function dataNum(s) {
+function dataNum(s, hora) {
   const m = String(s || '').match(/(\d{2})\/(\d{2})\/(\d{4})/);
-  return m ? +(m[3] + m[2] + m[1]) : 0;
+  const h = String(hora || '').match(/(\d{1,2}):(\d{2})/);
+  return (m ? +(m[3] + m[2] + m[1]) : 0) * 10000 + (h ? +h[1] * 100 + +h[2] : 0);
 }
 
-/* Junta histórico (relatórios) e tempo real. Chave = OP + medida (a mesma OP pode
+/* Junta histórico (relatórios) e produção atual. Chave = OP + medida (a mesma OP pode
    ter dois pedidos de medidas diferentes). Na mesma OP+medida vale o MAIOR produzido
    (as duas fontes cobrem o mesmo período, somar contaria duas vezes) e o cadastro
-   (cliente/OC completos) vem do tempo real — nos PDFs antigos eles vêm cortados. */
+   (cliente/OC completos) vem do app de Controle — nos PDFs antigos eles vêm cortados. */
 function mesclaProducao(antiga, viva) {
   const mapa = new Map();
   const chave = i => normOC(i.op) + '|' + i.largMM + '|' + i.comprMM;
-  (antiga || []).forEach(i => { const l = itemParaLinha(i, ARQ_ANTIGA); mapa.set(chave(l), l); });
+  (antiga || []).forEach(i => { const l = itemParaLinha(i, ARQ_PRODUCAO); mapa.set(chave(l), l); });
   (viva || []).forEach(i => {
-    const novo = itemParaLinha(i, ARQ_VIVA);
+    const novo = itemParaLinha(i, ARQ_PRODUCAO);
     const k = chave(novo), ant = mapa.get(k);
     if (ant) {
       novo.produzido = Math.max(novo.produzido, ant.produzido);
       if (!novo.qtde) novo.qtde = ant.qtde;
       if (!novo.papel) novo.papel = ant.papel;
       if (!novo.of) novo.of = ant.of;
-      if (dataNum(ant.data) > dataNum(novo.data)) novo.data = ant.data;
+      if (dataNum(ant.data, ant.hora) > dataNum(novo.data, novo.hora)) { novo.data = ant.data; novo.hora = ant.hora; }
     }
     mapa.set(k, novo);
   });
@@ -310,7 +310,7 @@ function atualizaChips() {
   btn.textContent = atualizando ? 'Atualizando...' : '🔄 Atualizar agora';
 
   if (indiceProducao) {
-    const hora = infoProducao && infoProducao.vivaEm ? ' · tempo real ' + horaDe(infoProducao.vivaEm) : '';
+    const hora = infoProducao && infoProducao.vivaEm ? ' · atualizado ' + horaDe(infoProducao.vivaEm) : '';
     const aviso = erroProducao ? ' · ⚠️ sem conexão, dados da última atualização'
       : (infoProducao && infoProducao.parcial ? ' · ⚠️ parte do histórico indisponível' : '');
     chip.textContent = '✓ Produção — ' + indiceProducao.length + ' pedidos' + hora + aviso;
@@ -409,7 +409,8 @@ function linhaItem(l) {
   return '<div class="itemAchado"><b>' + l.cliente + '</b>' +
     '<span>' + (l.of ? 'OF ' + l.of + ' · ' : '') + (l.oc ? 'OC ' + l.oc + ' · ' : '') + (l.op ? 'OP ' + l.op + ' · ' : '') + (l.papel ? l.papel + ' · ' : '') +
     l.largMM + '×' + l.comprMM + ' mm · ' + qtdeTxt +
-    (l.data ? ' · ' + l.data : '') + ' · <i>' + l.arquivo + '</i></span></div>';
+    (l.data ? ' · ' + l.data + (l.hora ? ' ' + l.hora : '') : '') +
+    (l.status === 'fila' ? ' · <i>' + l.arquivo + '</i>' : '') + '</span></div>';
 }
 
 function renderResultado(produzidos, fila) {
@@ -550,7 +551,7 @@ function exportaRelatorioProduzidos() {
   const dataTxt = String(agora.getDate()).padStart(2, '0') + '/' + String(agora.getMonth() + 1).padStart(2, '0') + '/' + agora.getFullYear();
   aoa.push([]);
   const rNota = aoa.length;
-  aoa.push(['Relatório gerado em ' + dataTxt + '. Fonte: app de Controle de Produção (tempo real) e relatórios de turno (histórico) — Consulta OC Prime.']);
+  aoa.push(['Relatório gerado em ' + dataTxt + '. Fonte: app de Controle de Produção e relatórios de turno — Consulta OC Prime.']);
   estilos[XLSX.utils.encode_cell({ r: rNota, c: 0 })] = { font: { italic: true, sz: 10, color: { rgb: '51637A' } } };
 
   const ws = XLSX.utils.aoa_to_sheet(aoa);

@@ -1,7 +1,7 @@
 /* Consulta OC Prime — service worker (app shell só, sem cache de dados —
    os dados vêm sempre da rede: JSONs de produção e programacao-hoje.xlsx do GitHub).
    Para forçar atualização nos aparelhos: mude o número da versão e faça o commit. */
-const VERSAO = 'consulta-oc-v4';
+const VERSAO = 'consulta-oc-v5';
 const ARQUIVOS = ['consulta.html'];
 
 self.addEventListener('install', e => {
