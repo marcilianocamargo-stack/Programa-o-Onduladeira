@@ -9,7 +9,6 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Barlow:wght@400;500;600&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <style>
 :root{
   --papel:#eef2f7; --cartao:#ffffff; --tinta:#0f1e2e; --tinta2:#51637a;
@@ -50,6 +49,7 @@ input:focus{outline:2px solid var(--kraft);outline-offset:0;border-color:var(--k
 .fila-chip.ok{border-color:#bcd9c6;background:var(--ok-bg);color:var(--ok)}
 .fila-chip.pul{border-color:#e8b3a8;background:var(--alerta-bg);color:var(--alerta);opacity:.75}
 .statusRow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px}
+.statusRow .fila-chip{white-space:normal}
 
 .resultado{border-radius:10px;padding:14px;margin-top:6px;border:1.5px solid}
 .resultado.produzido{background:var(--ok-bg);border-color:#bcd9c6;color:#1d5436}
@@ -68,15 +68,14 @@ input:focus{outline:2px solid var(--kraft);outline-offset:0;border-color:var(--k
 </header>
 <main>
   <div class="card">
-    <p class="nota" style="margin-top:0">Consulta rápida: diz se um pedido já foi <b>produzido</b> ou ainda está <b>na fila de programação</b>, lendo direto das mesmas pastas do computador (nenhum dado fica salvo aqui além da conexão das pastas).</p>
+    <p class="nota" style="margin-top:0">Consulta rápida: diz se um pedido já foi <b>produzido</b> ou ainda está <b>na fila de programação</b>. Lê direto do app de Controle de Produção (atualizado a cada palete etiquetado) e da programação do dia — não precisa conectar pastas e funciona em qualquer aparelho. Atualiza sozinho a cada minuto.</p>
 
     <div class="statusRow">
-      <span id="dupChip" class="fila-chip" onclick="conectaPastaProducao()">🔗 Conectar pasta "produção produzida"</span>
-      <button type="button" id="dupBtnAtualizar" class="btn mini sec" style="display:none" onclick="atualizaIndiceDuplicidade()">🔄</button>
+      <span id="dupChip" class="fila-chip" onclick="atualizaDados()">Carregando produção...</span>
     </div>
     <div class="statusRow">
-      <span id="dupChipFila" class="fila-chip" onclick="conectaPastaFila()">🔗 Conectar pasta "programação" (fila)</span>
-      <button type="button" id="dupBtnAtualizarFila" class="btn mini sec" style="display:none" onclick="atualizaIndiceFila()">🔄</button>
+      <span id="dupChipFila" class="fila-chip" onclick="atualizaDados()">Carregando programação...</span>
+      <button type="button" id="dupBtnAtualizar" class="btn mini sec" onclick="atualizaDados()">🔄 Atualizar agora</button>
     </div>
   </div>
 
@@ -105,157 +104,7 @@ input:focus{outline:2px solid var(--kraft);outline-offset:0;border-color:var(--k
 <script>
 const $ = id => document.getElementById(id);
 
-/* ===== mesma lógica de conexão/parsing/comparação do app de programação
-   (index.html) — usa o MESMO banco IndexedDB (prime_dup_v1), então se as
-   pastas já foram conectadas por lá, esta página reconecta sozinha, sem
-   pedir de novo (mesma origem = mesma permissão salva). ===== */
-
-let dirHandleProducao = null;
-let indiceProducao = null;   // [{cliente, oc, data, largMM, comprMM, qtde, arquivo, status:'produzido'}]
-let dirHandleFila = null;
-let indiceFila = null;       // mesma forma, status:'fila'
-
-const DUP_DB_NAME = 'prime_dup_v1', DUP_STORE = 'handles';
-const DUP_KEY = 'pastaProducao', DUP_KEY_FILA = 'pastaFila';
-
-function dupDB() {
-  return new Promise((res, rej) => {
-    const r = indexedDB.open(DUP_DB_NAME, 1);
-    r.onupgradeneeded = () => r.result.createObjectStore(DUP_STORE);
-    r.onsuccess = () => res(r.result);
-    r.onerror = () => rej(r.error);
-  });
-}
-async function salvaHandle(key, handle) {
-  try {
-    const db2 = await dupDB();
-    await new Promise((res, rej) => {
-      const tx = db2.transaction(DUP_STORE, 'readwrite');
-      tx.objectStore(DUP_STORE).put(handle, key);
-      tx.oncomplete = res; tx.onerror = () => rej(tx.error);
-    });
-  } catch (e) {}
-}
-async function carregaHandle(key) {
-  try {
-    const db2 = await dupDB();
-    return await new Promise((res, rej) => {
-      const tx = db2.transaction(DUP_STORE, 'readonly');
-      const rq = tx.objectStore(DUP_STORE).get(key);
-      rq.onsuccess = () => res(rq.result || null);
-      rq.onerror = () => rej(rq.error);
-    });
-  } catch (e) { return null; }
-}
-
-async function conectaPastaProducao() {
-  if (!window.showDirectoryPicker) {
-    alert('Este navegador não permite conectar pastas do computador — funciona no Chrome ou Edge, no PC.');
-    return;
-  }
-  try {
-    const handle = await window.showDirectoryPicker();
-    dirHandleProducao = handle;
-    await salvaHandle(DUP_KEY, handle);
-    const chip = $('dupChip');
-    if (chip) chip.textContent = 'Lendo pasta...';
-    await escaneiaPastaProducao();
-  } catch (e) { /* usuário cancelou a escolha da pasta */ }
-  atualizaChipDuplicidade();
-}
-
-async function tentaReconectarPastaProducao() {
-  const handle = await carregaHandle(DUP_KEY);
-  if (!handle) { atualizaChipDuplicidade(); return; }
-  try {
-    const perm = await handle.queryPermission({ mode: 'read' });
-    if (perm === 'granted') {
-      dirHandleProducao = handle;
-      await escaneiaPastaProducao();
-    }
-  } catch (e) {}
-  atualizaChipDuplicidade();
-}
-
-async function conectaPastaFila() {
-  if (!window.showDirectoryPicker) {
-    alert('Este navegador não permite conectar pastas do computador — funciona no Chrome ou Edge, no PC.');
-    return;
-  }
-  try {
-    const handle = await window.showDirectoryPicker();
-    dirHandleFila = handle;
-    await salvaHandle(DUP_KEY_FILA, handle);
-    const chip = $('dupChipFila');
-    if (chip) chip.textContent = 'Lendo pasta...';
-    await escaneiaPastaFila();
-  } catch (e) { /* usuário cancelou a escolha da pasta */ }
-  atualizaChipFila();
-}
-
-async function tentaReconectarPastaFila() {
-  const handle = await carregaHandle(DUP_KEY_FILA);
-  if (!handle) { atualizaChipFila(); return; }
-  try {
-    const perm = await handle.queryPermission({ mode: 'read' });
-    if (perm === 'granted') {
-      dirHandleFila = handle;
-      await escaneiaPastaFila();
-    }
-  } catch (e) {}
-  atualizaChipFila();
-}
-
-async function escaneiaPastaProducao() {
-  if (!dirHandleProducao) return;
-  const linhas = [];
-  try {
-    for await (const [nome, entry] of dirHandleProducao.entries()) {
-      if (entry.kind !== 'file') continue;
-      if (nome.startsWith('~$')) continue; // ignora temporários do Excel
-      try {
-        if (/\.xlsx$/i.test(nome)) {
-          const file = await entry.getFile();
-          const buf = await file.arrayBuffer();
-          const wb = XLSX.read(buf, { type: 'array' });
-          wb.SheetNames.forEach(sn => {
-            extraiLinhasProducaoXLSX(wb.Sheets[sn], nome).forEach(l => linhas.push(l));
-          });
-        } else if (/\.pdf$/i.test(nome)) {
-          const file = await entry.getFile();
-          const buf = await file.arrayBuffer();
-          (await extraiLinhasProducaoPDF(buf, nome)).forEach(l => linhas.push(l));
-        }
-      } catch (e) { /* arquivo corrompido, aberto no Excel, PDF ilegível — ignora e segue */ }
-    }
-  } catch (e) { /* permissão perdida etc. */ }
-  indiceProducao = linhas;
-}
-
-async function escaneiaPastaFila() {
-  if (!dirHandleFila) return;
-  const linhas = [];
-  try {
-    for await (const [nome, entry] of dirHandleFila.entries()) {
-      if (entry.kind !== 'file') continue;
-      if (nome.startsWith('~$') || !/\.xlsx$/i.test(nome)) continue; // só .xlsx — arquivo gerado pelo app de programação
-      try {
-        const file = await entry.getFile();
-        const buf = await file.arrayBuffer();
-        const wb = XLSX.read(buf, { type: 'array' });
-        wb.SheetNames.forEach(sn => {
-          extraiLinhasFilaXLSX(wb.Sheets[sn], nome).forEach(l => linhas.push(l));
-        });
-      } catch (e) { /* arquivo corrompido ou aberto no Excel — ignora e segue */ }
-    }
-  } catch (e) { /* permissão perdida etc. */ }
-  indiceFila = linhas;
-}
-
-function dataDoNomeArquivo(nome) {
-  const m = String(nome || '').match(/(\d{2})-(\d{2})-(\d{4})/);
-  return m ? (m[1] + '/' + m[2] + '/' + m[3]) : '';
-}
+/* ===== lógica de busca/parsing (a mesma de antes; só a ORIGEM dos dados mudou) ===== */
 
 function dataCelula(v) {
   if (v == null || v === '') return '';
@@ -282,139 +131,6 @@ function parseMedida(s) {
   const b = parseFloat(m[2].replace(',', '.'));
   if (!a || !b) return null;
   return { largMM: Math.round(a * 1000), comprMM: Math.round(b * 1000) };
-}
-
-/* Assinatura da tabela "Resumo" (uma linha por pedido). SALDO separa ela da
-   tabela "Produção" (detalhe por palete — mesmas OC/CLIENTE/MEDIDA, mas sem
-   SALDO); sem essa exigência cada pedido duplicaria por palete.
-   NÃO exige OP nem OF: relatórios mais antigos (ex.: antes de 09/07/2026) só
-   têm uma dessas duas colunas — a que existir guarda o número do pedido (ver
-   extraiLinhasProducaoXLSX/PDF). Exigir as duas deixava o arquivo inteiro
-   invisível pra busca quando faltava uma. */
-const COLS_PRODUCAO = ['OC', 'CLIENTE', 'MEDIDA', 'SALDO'];
-
-function extraiLinhasProducaoXLSX(sheet, arquivo) {
-  const aoa = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: true, defval: '' });
-  let hIdx = -1, colMap = {};
-  for (let i = 0; i < aoa.length; i++) {
-    const row = aoa[i].map(c => String(c == null ? '' : c).trim().toUpperCase());
-    if (COLS_PRODUCAO.every(k => row.includes(k))) {
-      hIdx = i;
-      aoa[i].forEach((v, ci) => {
-        const k = String(v == null ? '' : v).trim().toUpperCase();
-        if (k && colMap[k] == null) colMap[k] = ci;
-      });
-      break;
-    }
-  }
-  if (hIdx < 0) return [];
-  const colQtde = colMap['QTDE PEDIDO'] != null ? colMap['QTDE PEDIDO'] : colMap['QTDE'];
-  const colProduzido = colMap['PRODUZIDO'] != null ? colMap['PRODUZIDO'] : colMap['PRODUZID'];
-  const colPap = colPapel(colMap);
-  const dataArquivo = dataDoNomeArquivo(arquivo);
-  const linhas = [];
-  for (let i = hIdx + 1; i < aoa.length; i++) {
-    const row = aoa[i];
-    const cliente = String(row[colMap['CLIENTE']] == null ? '' : row[colMap['CLIENTE']]).trim();
-    // relatórios antigos não têm coluna "OP" própria — nesse caso a coluna
-    // "OF" é que guarda o número do pedido, e não sobra um "OF" de verdade
-    // (o pequeno, compartilhado pelo dia) pra extrair.
-    const temOP = colMap['OP'] != null;
-    const colId = temOP ? colMap['OP'] : colMap['OF'];
-    const op = String(row[colId] == null ? '' : row[colId]).trim();
-    if (!cliente || !op) continue;
-    const med = parseMedida(row[colMap['MEDIDA']]);
-    if (!med) continue;
-    linhas.push({
-      cliente,
-      op,
-      of: temOP ? String(row[colMap['OF']] == null ? '' : row[colMap['OF']]).trim() : '',
-      oc: String(row[colMap['OC']] == null ? '' : row[colMap['OC']]).trim(),
-      papel: colPap != null ? String(row[colPap] == null ? '' : row[colPap]).trim() : '',
-      data: dataArquivo,
-      largMM: med.largMM, comprMM: med.comprMM,
-      qtde: +row[colQtde] || 0,
-      produzido: colProduzido != null ? (+row[colProduzido] || 0) : null,
-      arquivo, status: 'produzido'
-    });
-  }
-  return linhas;
-}
-
-async function extraiLinhasProducaoPDF(buf, arquivo) {
-  const doc = await pdfjsLib.getDocument({ data: buf }).promise;
-  const dataArquivo = dataDoNomeArquivo(arquivo);
-  const linhas = [];
-  for (let p = 1; p <= doc.numPages; p++) {
-    const page = await doc.getPage(p);
-    const tc = await page.getTextContent();
-
-    const linhasPagina = [];
-    tc.items.forEach(it => {
-      const texto = (it.str || '').trim();
-      if (!texto) return;
-      const y = it.transform[5], x = it.transform[4];
-      let linha = linhasPagina.find(l => Math.abs(l.y - y) < 1.5);
-      if (!linha) { linha = { y, itens: [] }; linhasPagina.push(linha); }
-      linha.itens.push({ x, texto });
-    });
-    linhasPagina.forEach(l => l.itens.sort((a, b) => a.x - b.x));
-    linhasPagina.sort((a, b) => b.y - a.y); // topo → fim da página
-
-    let cols = null; // [{x, nome}]
-    for (const linha of linhasPagina) {
-      const its = linha.itens;
-      const textosUpper = its.map(i => i.texto.toUpperCase());
-
-      if (COLS_PRODUCAO.every(k => textosUpper.includes(k))) {
-        cols = [];
-        for (let i = 0; i < its.length; i++) {
-          const nome = its[i].texto.toUpperCase();
-          if (nome === 'QTDE' && its[i + 1] && its[i + 1].texto.toUpperCase() === 'PEDIDO') {
-            cols.push({ x: its[i].x, nome: 'QTDE PEDIDO' });
-            i++;
-          } else {
-            cols.push({ x: its[i].x, nome });
-          }
-        }
-        continue;
-      }
-      if (!cols) continue;
-      if (textosUpper.some(t => t.includes('RESUMO') || t.startsWith('TOTAL'))) { cols = null; continue; }
-
-      const porColuna = {};
-      its.forEach(item => {
-        let alvo = cols[0];
-        for (const c of cols) { if (c.x <= item.x + 0.5) alvo = c; else break; }
-        porColuna[alvo.nome] = (porColuna[alvo.nome] ? porColuna[alvo.nome] + ' ' : '') + item.texto;
-      });
-
-      const cliente = (porColuna['CLIENTE'] || '').trim();
-      // relatórios antigos não têm coluna "OP" própria — nesse caso a coluna
-      // "OF" é que guarda o número do pedido, e não sobra um "OF" de verdade
-      // (o pequeno, compartilhado pelo dia) pra extrair.
-      const temOP = cols.some(c => c.nome === 'OP');
-      const op = (temOP ? (porColuna['OP'] || '') : (porColuna['OF'] || '')).trim();
-      if (!cliente || !op) continue;
-      const med = parseMedida(porColuna['MEDIDA']);
-      if (!med) continue;
-      const produzidoTxt = porColuna['PRODUZIDO'] || porColuna['PRODUZID'];
-      const colPapNome = (cols.find(c => ['PAPEL', 'P.O.', 'P.O', 'PO'].includes(c.nome)) || {}).nome;
-      linhas.push({
-        cliente,
-        op,
-        of: temOP ? (porColuna['OF'] || '').trim() : '',
-        oc: (porColuna['OC'] || '').trim(),
-        papel: colPapNome ? (porColuna[colPapNome] || '').trim() : '',
-        data: dataArquivo,
-        largMM: med.largMM, comprMM: med.comprMM,
-        qtde: parseInt(String(porColuna['QTDE PEDIDO'] || porColuna['QTDE'] || '').replace(/\D/g, ''), 10) || 0,
-        produzido: produzidoTxt != null ? (parseInt(String(produzidoTxt).replace(/\D/g, ''), 10) || 0) : null,
-        arquivo, status: 'produzido'
-      });
-    }
-  }
-  return linhas;
 }
 
 /* Assinatura das abas do arquivo de programação (fila pendente). */
@@ -479,49 +195,141 @@ function clienteBate(a, b) {
   return x === y || x.includes(y) || y.includes(x);
 }
 
-function atualizaChipDuplicidade() {
-  const chip = $('dupChip'), btn = $('dupBtnAtualizar');
-  if (!window.showDirectoryPicker) {
-    chip.textContent = '⚠️ Indisponível neste navegador (use Chrome/Edge no PC)';
-    chip.className = 'fila-chip pul';
-    btn.style.display = 'none';
-    return;
-  }
-  if (dirHandleProducao && indiceProducao) {
-    chip.textContent = '✓ Produção conectada — ' + indiceProducao.length + ' pedidos';
-    chip.className = 'fila-chip ok';
-    btn.style.display = '';
+
+/* ===== fontes de dados (nenhuma pasta do computador) =====
+   Produção: JSONs publicados pela VPS no repositório do app de Controle de Produção
+     - producao-viva.json   → soma dos paletes etiquetados, por OP; atualizado a cada palete
+     - producao-antiga.json → carga única dos relatórios de turno (histórico desde 08/06/2026)
+   Fila: programacao-hoje.xlsx publicado no mesmo repositório (a mesma planilha que
+   antes era lida da pasta "programação"). */
+const BASE_DADOS = 'https://raw.githubusercontent.com/marcilianocamargo-stack/controle-producao-etiquetas/main/';
+const URL_VIVA = BASE_DADOS + 'producao-viva.json';
+const URL_ANTIGA = BASE_DADOS + 'producao-antiga.json';
+const URL_FILA = BASE_DADOS + 'programacao-hoje.xlsx';
+const REFRESH_MS = 60000;
+const ARQ_VIVA = 'Tempo real (app de produção)';
+const ARQ_ANTIGA = 'Relatórios de turno (histórico)';
+
+let indiceProducao = null;   // [{cliente, op, of, oc, papel, data, largMM, comprMM, qtde, produzido, arquivo, status:'produzido'}]
+let indiceFila = null;       // mesma forma, status:'fila'
+let infoProducao = null;     // {parcial, vivaEm}
+let atualizando = false;
+let erroProducao = false, erroFila = false;
+
+const bust = () => '?t=' + Math.floor(Date.now() / 60000); // fura o cache de 5 min do raw do GitHub
+
+async function pegaJSON(url) {
+  const r = await fetch(url + bust(), { cache: 'no-store' });
+  if (!r.ok) throw new Error('HTTP ' + r.status);
+  return r.json();
+}
+
+function itemParaLinha(i, arquivo) {
+  return {
+    cliente: i.cliente || '', op: String(i.op || ''), of: i.of || '', oc: i.oc || '', papel: i.papel || '',
+    data: i.data || '', largMM: i.larg, comprMM: i.comp, qtde: i.qtde || 0, produzido: i.prod || 0,
+    arquivo, status: 'produzido'
+  };
+}
+
+function dataNum(s) {
+  const m = String(s || '').match(/(\d{2})\/(\d{2})\/(\d{4})/);
+  return m ? +(m[3] + m[2] + m[1]) : 0;
+}
+
+/* Junta histórico (relatórios) e tempo real. Chave = OP + medida (a mesma OP pode
+   ter dois pedidos de medidas diferentes). Na mesma OP+medida vale o MAIOR produzido
+   (as duas fontes cobrem o mesmo período, somar contaria duas vezes) e o cadastro
+   (cliente/OC completos) vem do tempo real — nos PDFs antigos eles vêm cortados. */
+function mesclaProducao(antiga, viva) {
+  const mapa = new Map();
+  const chave = i => normOC(i.op) + '|' + i.largMM + '|' + i.comprMM;
+  (antiga || []).forEach(i => { const l = itemParaLinha(i, ARQ_ANTIGA); mapa.set(chave(l), l); });
+  (viva || []).forEach(i => {
+    const novo = itemParaLinha(i, ARQ_VIVA);
+    const k = chave(novo), ant = mapa.get(k);
+    if (ant) {
+      novo.produzido = Math.max(novo.produzido, ant.produzido);
+      if (!novo.qtde) novo.qtde = ant.qtde;
+      if (!novo.papel) novo.papel = ant.papel;
+      if (!novo.of) novo.of = ant.of;
+      if (dataNum(ant.data) > dataNum(novo.data)) novo.data = ant.data;
+    }
+    mapa.set(k, novo);
+  });
+  return [...mapa.values()];
+}
+
+async function carregaProducao() {
+  const [a, v] = await Promise.allSettled([pegaJSON(URL_ANTIGA), pegaJSON(URL_VIVA)]);
+  if (a.status !== 'fulfilled' && v.status !== 'fulfilled') throw new Error('sem dados de produção');
+  return {
+    linhas: mesclaProducao(a.value && a.value.itens, v.value && v.value.itens),
+    vivaEm: v.value ? v.value.atualizadoEm : null,
+    parcial: a.status !== 'fulfilled' || v.status !== 'fulfilled'
+  };
+}
+
+async function carregaFila() {
+  const r = await fetch(URL_FILA + bust(), { cache: 'no-store' });
+  if (!r.ok) throw new Error('HTTP ' + r.status);
+  const wb = XLSX.read(await r.arrayBuffer(), { type: 'array' });
+  const linhas = [];
+  wb.SheetNames.forEach(sn => {
+    extraiLinhasFilaXLSX(wb.Sheets[sn], 'programacao-hoje.xlsx').forEach(l => linhas.push(l));
+  });
+  return linhas;
+}
+
+async function atualizaDados() {
+  if (atualizando) return;
+  atualizando = true;
+  atualizaChips();
+  const [p, f] = await Promise.allSettled([carregaProducao(), carregaFila()]);
+  if (p.status === 'fulfilled') {
+    indiceProducao = p.value.linhas; infoProducao = p.value; erroProducao = false;
+  } else erroProducao = true;
+  if (f.status === 'fulfilled') { indiceFila = f.value; erroFila = false; } else erroFila = true;
+  atualizando = false;
+  atualizaChips();
+  buscar(); // refaz a busca que estiver na tela com os dados novos
+}
+
+function horaDe(iso) {
+  // "2026-10-08T16:42:39" (horário de Brasília) → "16:42" (ou "08/10 16:42" se não for de hoje)
+  const m = String(iso || '').match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}:\d{2})/);
+  if (!m) return '';
+  const hoje = new Date();
+  const ehHoje = +m[1] === hoje.getFullYear() && +m[2] === hoje.getMonth() + 1 && +m[3] === hoje.getDate();
+  return ehHoje ? m[4] : m[3] + '/' + m[2] + ' ' + m[4];
+}
+
+function atualizaChips() {
+  const chip = $('dupChip'), chipF = $('dupChipFila'), btn = $('dupBtnAtualizar');
+  btn.disabled = atualizando;
+  btn.textContent = atualizando ? 'Atualizando...' : '🔄 Atualizar agora';
+
+  if (indiceProducao) {
+    const hora = infoProducao && infoProducao.vivaEm ? ' · tempo real ' + horaDe(infoProducao.vivaEm) : '';
+    const aviso = erroProducao ? ' · ⚠️ sem conexão, dados da última atualização'
+      : (infoProducao && infoProducao.parcial ? ' · ⚠️ parte do histórico indisponível' : '');
+    chip.textContent = '✓ Produção — ' + indiceProducao.length + ' pedidos' + hora + aviso;
+    chip.className = 'fila-chip ' + (erroProducao || (infoProducao && infoProducao.parcial) ? 'pul' : 'ok');
   } else {
-    chip.textContent = '🔗 Conectar pasta "produção produzida"';
-    chip.className = 'fila-chip';
-    btn.style.display = 'none';
+    chip.textContent = atualizando ? 'Carregando produção...' : '⚠️ Produção indisponível — toque para tentar de novo';
+    chip.className = 'fila-chip' + (atualizando ? '' : ' pul');
+  }
+
+  if (indiceFila) {
+    chipF.textContent = '✓ Programação (fila) — ' + indiceFila.length + ' pedidos' +
+      (erroFila ? ' · ⚠️ sem conexão, dados da última atualização' : '');
+    chipF.className = 'fila-chip ' + (erroFila ? 'pul' : 'ok');
+  } else {
+    chipF.textContent = atualizando ? 'Carregando programação...' : '⚠️ Programação indisponível — toque para tentar de novo';
+    chipF.className = 'fila-chip' + (atualizando ? '' : ' pul');
   }
 }
 
-function atualizaChipFila() {
-  const chip = $('dupChipFila'), btn = $('dupBtnAtualizarFila');
-  if (!window.showDirectoryPicker) { btn.style.display = 'none'; return; }
-  if (dirHandleFila && indiceFila) {
-    chip.textContent = '✓ Programação conectada — ' + indiceFila.length + ' pedidos na fila';
-    chip.className = 'fila-chip ok';
-    btn.style.display = '';
-  } else {
-    chip.textContent = '🔗 Conectar pasta "programação" (fila)';
-    chip.className = 'fila-chip';
-    btn.style.display = 'none';
-  }
-}
-
-async function atualizaIndiceDuplicidade() {
-  $('dupChip').textContent = 'Atualizando...';
-  await escaneiaPastaProducao();
-  atualizaChipDuplicidade();
-}
-async function atualizaIndiceFila() {
-  $('dupChipFila').textContent = 'Atualizando...';
-  await escaneiaPastaFila();
-  atualizaChipFila();
-}
 
 /* ===== busca =====
    Busca com o mínimo de dado possível — usa o que tiver preenchido, na
@@ -584,7 +392,9 @@ function buscar(ev) {
   const achadosFila = acha(indiceFila).filter(f => !achadosProduzido.some(p =>
     normOC(p.oc) === normOC(f.oc) && p.largMM === f.largMM && p.comprMM === f.comprMM &&
     p.qtde === f.qtde && clienteBate(p.cliente, f.cliente)
-  ));
+  ) && !(f.op && achadosProduzido.some(p =>
+    normOC(p.op) === normOC(f.op) && p.largMM === f.largMM && p.comprMM === f.comprMM
+  )));
   ultimoAchadosProduzido = achadosProduzido;
   ultimoAchadosFila = achadosFila;
   ultimoClienteBuscado = cliente.trim();
@@ -606,7 +416,7 @@ function renderResultado(produzidos, fila) {
   const box = $('resultados');
   if (!produzidos.length && !fila.length) {
     box.innerHTML = '<div class="resultado nada"><h3>Não encontrado</h3>' +
-      '<p>Não achei esse pedido nem na produção já feita, nem na fila. Confira se as duas pastas estão conectadas e atualizadas acima, e se a OC/cliente/medida estão certos.</p></div>';
+      '<p>Não achei esse pedido nem na produção já feita, nem na fila. Confira se os dois indicadores acima estão verdes (dados carregados) e se a OC/cliente/medida estão certos.</p></div>';
     return;
   }
   let html = '';
@@ -740,7 +550,7 @@ function exportaRelatorioProduzidos() {
   const dataTxt = String(agora.getDate()).padStart(2, '0') + '/' + String(agora.getMonth() + 1).padStart(2, '0') + '/' + agora.getFullYear();
   aoa.push([]);
   const rNota = aoa.length;
-  aoa.push(['Relatório gerado em ' + dataTxt + '. Fonte: pastas de produção conectadas na Consulta OC Prime (Excel/PDF).']);
+  aoa.push(['Relatório gerado em ' + dataTxt + '. Fonte: app de Controle de Produção (tempo real) e relatórios de turno (histórico) — Consulta OC Prime.']);
   estilos[XLSX.utils.encode_cell({ r: rNota, c: 0 })] = { font: { italic: true, sz: 10, color: { rgb: '51637A' } } };
 
   const ws = XLSX.utils.aoa_to_sheet(aoa);
@@ -798,7 +608,7 @@ function exportaRelatorioFila() {
   const dataTxt = String(agora.getDate()).padStart(2, '0') + '/' + String(agora.getMonth() + 1).padStart(2, '0') + '/' + agora.getFullYear();
   aoa.push([]);
   const rNota = aoa.length;
-  aoa.push(['Relatório gerado em ' + dataTxt + '. Fonte: pasta de programação (fila, ainda não produzida) conectada na Consulta OC Prime.']);
+  aoa.push(['Relatório gerado em ' + dataTxt + '. Fonte: programação do dia (fila, ainda não produzida) — Consulta OC Prime.']);
   estilos[XLSX.utils.encode_cell({ r: rNota, c: 0 })] = { font: { italic: true, sz: 10, color: { rgb: '51637A' } } };
 
   const ws = XLSX.utils.aoa_to_sheet(aoa);
@@ -817,8 +627,9 @@ function exportaRelatorioFila() {
 }
 
 /* ---------- início ---------- */
-tentaReconectarPastaProducao();
-tentaReconectarPastaFila();
+atualizaDados();
+setInterval(() => { if (!document.hidden) atualizaDados(); }, REFRESH_MS);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) atualizaDados(); });
 if ('serviceWorker' in navigator && location.protocol.startsWith('http'))
   navigator.serviceWorker.register('sw-consulta.js').catch(() => {});
 </script>
