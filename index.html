@@ -1524,63 +1524,88 @@ function baixa(blob, nome) {
 }
 
 /* ---------- copiar linha da OF para colar no Excel ---------- */
+// A linha copiada segue EXATAMENTE as colunas e formatos do "Excel por Bobina"
+// (_exportaXLSX / tabela limpa): mesmas colunas, na mesma ordem (inclusive as 2
+// colunas em branco), números com vírgula e as mesmas casas decimais
+// (0,693 / 1,780 / 0,9370 ...). Vai para a área de transferência em duas formas:
+//  - text/html: o Excel respeita o mso-number-format e mostra os zeros finais;
+//  - text/plain (TSV): fallback para colar em qualquer outro lugar.
 function copiaLinhaOF(id) {
   const o = db.ofs.find(x => x.id === id);
   if (!o) return;
-  const cc  = calcOF(o);
-  // Excel em pt-BR usa vírgula como separador decimal — number.toFixed() sempre
-  // devolve ponto, então convertemos aqui antes de colar (senão o Excel recebe
-  // o número como texto e perde a formatação/o valor numérico).
-  const virg = s => s.replace('.', ',');
-  const largM  = virg((o.larg / 1000).toFixed(3));
-  const comprM = virg((o.compr / 1000).toFixed(3));
-  const luM    = virg(((o.larg / 1000) * o.arranjo).toFixed(3));
-  const ponta  = o.bobina - o.larg * o.arranjo;
-  const refile = o.bobina ? virg((ponta / o.bobina).toFixed(4)) : '';
-  const pps    = o.papeis || [];
-  // Colunas na mesma ordem da aba tabela_limpa do Excel exportado:
-  // Seq.Prod | Cliente | P.O. | Data Prod | Qtde.Prod. | OP | OC | Qtde Pedido
-  // largura | comprimento | Sliter Vincadeira | m² | ML | t/prod | Min prod | kg
-  // Arranjo | Formato bobinas | Largura util | Ponta Refile | Refile
-  // Capa Forradeira | MB | CIB | MC | CIC | Palete Qtde | Palete (medida LxC)
+  const cc = calcOF(o);
+  const ponta = o.bobina - o.larg * o.arranjo;
+  const pps = o.papeis || [];
+  // n(valor, casas): número com `casas` decimais fixas -> {t: texto pt-BR, f: formato Excel}
+  // n(valor, null): número "Geral" (sem zeros à direita, como no Excel)
+  const n = (v, casas) => {
+    if (v == null || v === '' || isNaN(v)) return { t: '', f: null };
+    if (casas == null) return { t: String(+v).replace('.', ','), f: null, num: true };
+    return { t: (+v).toFixed(casas).replace('.', ','), f: casas ? '0.' + '0'.repeat(casas) : '0', num: true };
+  };
+  const tx = v => ({ t: v == null ? '' : String(v), f: '@' });   // texto (como no xlsx)
+  const vz = { t: '', f: null };
+  // Mesma ordem de HEAD2 do _exportaXLSX:
+  // Seq.Prod | Cliente | P.O. | Data Pedido | OP | OC | Qtde Pedido | largura |
+  // comprimento | (branco) | Sliter Vincadeira | (branco) | m² | ML | t/prod |
+  // Min prod | kg | Arranjo | Formato bobinas | Largura util | Ponta Refile |
+  // Refile | Capa Forradeira | MB | CIB | MC | CIC | Palete Qtde | Palete (LxC)
   const cols = [
-    '',
-    o.cliente,
-    poCodigo(o),
-    dataBR(o.data),
-    '',
-    o.of,
-    o.oc || '',
-    o.qtde,
-    largM,
-    comprM,
-    o.vinco,
-    cc.m2  != null ? virg(cc.m2.toFixed(3))       : '',
-    cc.ml  != null ? virg(cc.ml.toFixed(1))        : '',
-    cc.min != null ? virg((cc.min/60).toFixed(4))  : '',
-    cc.min != null ? virg(cc.min.toFixed(2))       : '',
-    cc.kg  != null ? virg(cc.kg.toFixed(1))        : '',
-    o.arranjo,
-    o.bobina,
-    luM,
-    ponta.toFixed(0),
-    refile,
-    pps[0] || '', pps[1] || '', pps[2] || '', pps[3] || '', pps[4] || '',
-    o.palQtde || '',
-    o.palMed  || ''
+    vz,
+    tx(o.cliente),
+    tx(poCodigo(o)),
+    tx(dataBR(o.data)),
+    n(+o.of, null),
+    tx(o.oc || ''),
+    n(o.qtde, null),
+    n(o.larg / 1000, 3),
+    n(o.compr / 1000, 3),
+    vz,
+    tx(o.vinco),
+    vz,
+    cc.m2  != null ? n(cc.m2, 3)    : vz,
+    cc.ml  != null ? n(cc.ml, 1)    : vz,
+    cc.min != null ? n(cc.min / 60, 4) : vz,
+    cc.min != null ? n(cc.min, 2)   : vz,
+    cc.kg  != null ? n(+cc.kg.toFixed(1), null) : vz,
+    n(o.arranjo, null),
+    n(o.bobina, null),
+    n((o.larg / 1000) * o.arranjo, 3),
+    n(+ponta.toFixed(0), null),
+    o.bobina ? n(ponta / o.bobina, 4) : vz,
+    tx(pps[0] || ''), tx(pps[1] || ''), tx(pps[2] || ''), tx(pps[3] || ''), tx(pps[4] || ''),
+    tx(o.palQtde || ''),
+    tx(o.palMed || '')
   ];
-  const tsv = cols.join('\t');
+  const tsv = cols.map(c => c.t).join('\t');
+  const esc = s => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const html = '<table><tr>' + cols.map(c => {
+    const fmt = c.f ? ' style="mso-number-format:\'' + (c.f === '@' ? '\\@' : c.f.replace('.', '\\.')) + '\'"' : '';
+    return '<td' + fmt + '>' + esc(c.t) + '</td>';
+  }).join('') + '</tr></table>';
+
   const btn = document.querySelector('[data-copy="' + id + '"]');
   const ok  = () => { if (btn) { const t = btn.textContent; btn.textContent = 'Copiado!'; setTimeout(() => btn.textContent = t, 1800); } };
-  if (navigator.clipboard && navigator.clipboard.writeText) {
-    navigator.clipboard.writeText(tsv).then(ok).catch(() => copiaFallback(tsv, ok));
-  } else copiaFallback(tsv, ok);
+  if (navigator.clipboard && navigator.clipboard.write && window.ClipboardItem) {
+    navigator.clipboard.write([new ClipboardItem({
+      'text/html':  new Blob([html], { type: 'text/html' }),
+      'text/plain': new Blob([tsv],  { type: 'text/plain' })
+    })]).then(ok).catch(() => copiaFallback(tsv, ok, html));
+  } else copiaFallback(tsv, ok, html);
 }
-function copiaFallback(texto, cb) {
+function copiaFallback(texto, cb, html) {
   const ta = document.createElement('textarea');
   ta.value = texto; ta.style.cssText = 'position:fixed;opacity:0';
   document.body.appendChild(ta); ta.select();
+  const onCopy = e => {
+    if (!html) return;
+    e.clipboardData.setData('text/plain', texto);
+    e.clipboardData.setData('text/html', html);
+    e.preventDefault();
+  };
+  document.addEventListener('copy', onCopy);
   try { document.execCommand('copy'); cb(); } catch(e) { alert('Não foi possível copiar automaticamente.'); }
+  document.removeEventListener('copy', onCopy);
   document.body.removeChild(ta);
 }
 
