@@ -156,6 +156,7 @@ details .corpo{padding:10px 0}
 <header>
   <h1>Onduladeira <small>· Prime</small></h1>
   <div style="display:flex;align-items:center;gap:10px">
+    <span id="syncChip" style="font-size:11.5px;color:#9fc4e8;white-space:nowrap" title="Estado da ligação com o servidor">○ conectando…</span>
     <a href="consulta.html" style="color:#9fc4e8;font-size:12.5px;text-decoration:none">Consulta OC →</a>
     <button id="velChip" onclick="trocaAba('tab')" title="Velocidade de produção">60 m/min</button>
   </div>
@@ -343,7 +344,7 @@ details .corpo{padding:10px 0}
     <details>
       <summary>Dados</summary>
       <div class="corpo card">
-        <p class="nota">As OFs e tabelas ficam salvas neste aparelho (localStorage). Faça backup exportando o Excel ou o arquivo de dados.</p>
+        <p class="nota">As OFs, tabelas e contadores de OF/OP ficam salvos no servidor e valem para todos os aparelhos (este aparelho guarda só uma cópia). O servidor mantém histórico automático; o backup em arquivo é opcional.</p>
         <div class="acoes">
           <button class="btn mini sec" onclick="exportaJSON()">Backup dos dados</button>
           <button class="btn mini sec" onclick="document.getElementById('impJSON').click()">Restaurar backup</button>
@@ -480,6 +481,11 @@ let sortProgView = 'of'; // 'of' = por nº da OF | 'prod' = por cliente/bobina (
 function carrega() {
   try { db = JSON.parse(localStorage.getItem(KEY)); } catch (e) { db = null; }
   if (!db || !db.params) db = JSON.parse(JSON.stringify(SEED));
+  migraDb();
+}
+/* Migrações de versão do db — rodam na cópia local e também depois de receber
+   o estado do servidor (que pode ter sido criado por uma versão mais antiga). */
+function migraDb() {
   if (!db.v || db.v < 2) {  // migração: formatos de 50 em 50 + limites da máquina
     db.params.formatos = SEED.params.formatos.slice();
     db.params.limites = JSON.parse(JSON.stringify(SEED.params.limites));
@@ -534,41 +540,128 @@ function carrega() {
 }
 function salva() { localStorage.setItem(KEY, JSON.stringify(db)); }
 
-/* ---------- OF única por programação / OP única por pedido (exigência FSC) ----------
-   O nº de OF é diferente do nº de OP (coluna "OP" da planilha, campo "Nº da OP"
-   do form — já é outra numeração, não mexer nela).
-   A OF continua num contador central (of-counter.json no repositório
-   controle-producao-etiquetas, lido/incrementado/gravado por um Cloudflare
-   Worker) porque a máquina pode ser operada de mais de um aparelho.
-   Já a OP só é usada neste computador, então o contador dela é local
-   (db.ultimaOP, salvo no localStorage): sequencial, imutável e irrepetível —
-   o campo "Nº da OP" nunca é digitado pelo operador, só mostra o próximo
-   número, e o valor definitivo só é gravado (e o contador avançado) no
-   momento de salvar. */
-const CONTADOR_WORKER_URL = 'https://sparkling-voice-98b7nduladeira-contador.marciliano-camargo.workers.dev';
+/* ---------- servidor (VPS) ----------
+   O estado do app — programação em aberto, papéis/produtos/parâmetros e os
+   contadores — fica no servidor (n8n.mcamargo.uk/onduladeira, serviço
+   onduladeira-api na VPS) e vale para todos os aparelhos. O número de OF
+   (FSC, uma por programação) e o de OP (um por pedido, sequencial, imutável e
+   irrepetível) só são gerados lá, na mesma operação que grava o pedido: dois
+   aparelhos salvando ao mesmo tempo nunca recebem o mesmo número.
+   Este aparelho mantém uma cópia no localStorage (para abrir rápido e mostrar
+   algo sem internet), mas lançar/editar/excluir exige o servidor. */
+const API = 'https://n8n.mcamargo.uk/onduladeira';
+let revServidor = null;      // última revisão do servidor aplicada aqui
+let salvandoNoServidor = 0;  // >0 enquanto há gravação em andamento (pausa a atualização automática)
+let idNovoPendente = null;   // id do pedido novo em tentativa — o reenvio não duplica
 
-/* Reserva uma OF nova no contador central — antes de liberar o lançamento
-   da 1ª OF da programação. O Worker cuida do sha/conflito entre aparelhos. */
-async function obterNovaOFCentral() {
-  const resp = await fetch(CONTADOR_WORKER_URL + '/of/reservar', { method: 'POST' });
+function statusSync(ok, txt) {
+  const el = $('syncChip');
+  if (!el) return;
+  el.textContent = (ok ? '● ' : '○ ') + txt;
+  el.style.color = ok ? '#7fd69a' : '#ff9d8a';
+}
+
+async function api(rota, corpo) {
+  let resp;
+  try {
+    resp = await fetch(API + rota, corpo === undefined ? { cache: 'no-store' } : {
+      method: 'POST', headers: { 'Content-Type': 'text/plain;charset=UTF-8' }, body: JSON.stringify(corpo)
+    });
+  } catch (e) {
+    statusSync(false, 'sem conexão');
+    throw new Error('Sem conexão com o servidor. Verifique a internet e tente de novo.');
+  }
   const j = await resp.json().catch(() => ({}));
-  if (!resp.ok || j.erro) throw new Error(j.erro || ('Falha ao reservar a OF (HTTP ' + resp.status + ').'));
-  return j.ofNumero;
+  if (!resp.ok || j.erro) throw new Error(j.erro || ('Falha no servidor (HTTP ' + resp.status + ').'));
+  statusSync(true, 'online');
+  return j;
 }
 
-/* Próxima OP local — só leitura, usada para mostrar no campo (não editável)
-   qual será o número. O avanço definitivo do contador só acontece ao salvar,
-   em reservaOpLocal(). */
+/* Copia o estado do servidor para o db local e redesenha. */
+function aplicaEstado(est) {
+  const antes = JSON.stringify([db.params, db.papeis, db.produtos]);
+  if (est.config) {
+    db.params = est.config.params; db.papeis = est.config.papeis; db.produtos = est.config.produtos;
+    db.v = est.config.v || 0;
+  }
+  db.ofs = est.ofs || [];
+  db.ofAtual = est.ofAtual || null;
+  db.ultimaOP = est.ultimaOP;
+  db.ultimaOF = est.ultimaOF;
+  revServidor = est.rev;
+  const vAntes = db.v;
+  migraDb();                       // salva() já é chamado lá dentro
+  if (est.config && vAntes !== db.v) enviaConfig();   // servidor estava numa versão antiga
+  desenhaProg();
+  atualizaOfCentralView();
+  if (!$('fEditId').value) sugereOP();
+  const mudouCfg = antes !== JSON.stringify([db.params, db.papeis, db.produtos]);
+  const painel = $('paneTab');
+  if (mudouCfg && painel && painel.classList.contains('on') &&
+      !(document.activeElement && painel.contains(document.activeElement))) desenhaTabelas();
+}
+
+/* Grava uma operação no servidor e aplica o estado devolvido. */
+async function mutaServidor(rota, corpo) {
+  salvandoNoServidor++;
+  try {
+    const j = await api(rota, corpo);
+    aplicaEstado(j.estado);
+    return j;
+  } finally { salvandoNoServidor--; }
+}
+
+async function enviaConfig() {
+  salvandoNoServidor++;
+  try {
+    const j = await api('/config', { db: { v: db.v, params: db.params, papeis: db.papeis, produtos: db.produtos } });
+    revServidor = j.estado.rev;
+  } catch (e) {
+    alert('Não foi possível salvar as tabelas no servidor: ' + e.message);
+  } finally { salvandoNoServidor--; }
+}
+/* Alteração de papéis/produtos/parâmetros: cópia local + servidor. */
+function salvaConfig() { salva(); enviaConfig(); }
+
+async function sincronizaInicial() {
+  try {
+    const est = await api('/estado');
+    if (!est.inicializado) return inicializaServidor();
+    aplicaEstado(est);
+  } catch (e) { statusSync(false, 'offline'); }
+}
+
+/* Primeira vez: o servidor ainda está vazio. Os dados do aparelho principal
+   (OFs, tabelas, contadores) sobem uma única vez. */
+async function inicializaServidor() {
+  const msg = 'O servidor ainda não tem dados.\n\nEnviar os dados DESTE aparelho (' + db.ofs.length +
+    ' OFs na programação, última OP ' + (db.ultimaOP || 0) + ') para o servidor?\n\n' +
+    'Faça isso SOMENTE no computador principal, onde estão os dados corretos. Depois disso todos os aparelhos passam a usar o servidor.';
+  if (!confirm(msg)) { statusSync(false, 'servidor vazio'); return; }
+  try {
+    const j = await api('/iniciar', { db });
+    aplicaEstado(j.estado);
+  } catch (e) {
+    alert('Não foi possível inicializar o servidor: ' + e.message);
+    sincronizaInicial();
+  }
+}
+
+/* Atualização automática: outro aparelho lançou/alterou algo? */
+async function verificaServidor() {
+  if (salvandoNoServidor > 0 || document.hidden) return;
+  try {
+    const r = await api('/rev');
+    if (!r.inicializado || r.rev === revServidor) return;
+    const est = await api('/estado');
+    if (salvandoNoServidor > 0) return;
+    aplicaEstado(est);
+  } catch (e) { /* o chip já mostra "sem conexão"; mantém o que está na tela */ }
+}
+
+/* Próxima OP — só leitura, mostrada no campo (não editável) como previsão.
+   O número definitivo é dado pelo servidor ao salvar. */
 function proximaOpLocal() { return (db.ultimaOP || 0) + 1; }
-
-/* Reserva (avança) o contador local da OP e devolve o número reservado.
-   Sempre sequencial a partir do último valor conhecido — sem depender de
-   rede nem de nº digitado, então nunca repete e nunca fica menor. */
-function reservaOpLocal() {
-  db.ultimaOP = proximaOpLocal();
-  salva();
-  return db.ultimaOP;
-}
 
 /* ---------- utilitários ---------- */
 const $ = id => document.getElementById(id);
@@ -935,33 +1028,21 @@ async function salvaOF(ev) {
   if (!of.bobina) { alert('Informe o formato da bobina.'); return false; }
   const v = validaVinco(of.vinco, of.larg);
   if (!v.ok && v.soma != null && !confirm('A soma dos vincos não fecha com a largura. Registrar mesmo assim?')) return false;
-  if (of.id) {
-    const i = db.ofs.findIndex(x => x.id === of.id);
-    of.cancelada = db.ofs[i].cancelada;
-    of.ofFsc = db.ofs[i].ofFsc;
-    db.ofs[i] = of;
-  } else {
-    if (!db.ofAtual) {
-      const btn = $('btnSalvar'), txtOrig = btn.textContent;
-      btn.disabled = true; btn.textContent = 'Reservando nº de OF...';
-      try {
-        db.ofAtual = await obterNovaOFCentral();
-        salva();
-      } catch (e) {
-        alert('Não foi possível reservar o número de OF (necessário para a nota fiscal FSC). ' +
-          'Verifique a internet e tente novamente.\n\n' + e.message);
-        btn.disabled = false; btn.textContent = txtOrig;
-        return false;
-      }
-      btn.disabled = false; btn.textContent = txtOrig;
-    }
-    of.ofFsc = db.ofAtual;
-    of.of = reservaOpLocal();
-
-    of.id = Date.now() + '-' + Math.random().toString(36).slice(2, 7);
-    db.ofs.push(of);
+  if (!of.id) {   // pedido novo: id fixo na tentativa, para o reenvio não duplicar
+    idNovoPendente = idNovoPendente || (Date.now() + '-' + Math.random().toString(36).slice(2, 7));
+    of.id = idNovoPendente; of.novo = true;
   }
-  salva();
+  const btn = $('btnSalvar'), txtOrig = btn.textContent;
+  btn.disabled = true; btn.textContent = 'Salvando no servidor...';
+  try {
+    await mutaServidor('/ofs/salvar', { of });   // o servidor dá a OP e a OF (FSC)
+  } catch (e) {
+    alert('Não foi possível salvar o pedido no servidor.\n\n' + e.message +
+      '\n\nO formulário foi mantido — tente salvar de novo.');
+    btn.disabled = false; btn.textContent = txtOrig;
+    return false;
+  }
+  btn.disabled = false; btn.textContent = txtOrig;
   if (filaMode && filaIdx >= 0 && filaIdx < filaOCR.length) {
     filaOCR[filaIdx].status = 'registrado';
     salvaFilaOCR();
@@ -974,6 +1055,7 @@ async function salvaOF(ev) {
 }
 
 function limpaForm() {
+  idNovoPendente = null;
   $('formOF').reset();
   $('fEditId').value = '';
   $('fVinco').value = 'x';
@@ -987,8 +1069,8 @@ function limpaForm() {
   if (av) av.innerHTML = '';
 }
 
-/* Mostra no campo (não editável) qual vai ser a próxima OP — só exibição,
-   o número definitivo só é reservado em reservaOpLocal() ao salvar. */
+/* Mostra no campo (não editável) a previsão da próxima OP — só exibição,
+   o número definitivo é dado pelo servidor ao salvar. */
 function sugereOP() {
   $('fOF').value = proximaOpLocal();
 }
@@ -1017,15 +1099,16 @@ function editaOF(id) {
   recalcula();
 }
 
-function cancelaOF(id) {
+async function cancelaOF(id) {
   const o = db.ofs.find(x => x.id === id);
-  o.cancelada = !o.cancelada;
-  salva(); desenhaProg();
+  if (!o) return;
+  try { await mutaServidor('/ofs/cancelar', { id, cancelada: !o.cancelada }); }
+  catch (e) { alert('Não foi possível alterar o pedido: ' + e.message); }
 }
-function excluiOF(id) {
+async function excluiOF(id) {
   if (!confirm('Excluir a OF definitivamente?')) return;
-  db.ofs = db.ofs.filter(x => x.id !== id);
-  salva(); desenhaProg();
+  try { await mutaServidor('/ofs/excluir', { id }); }
+  catch (e) { alert('Não foi possível excluir o pedido: ' + e.message); }
 }
 
 /* ---------- programação ---------- */
@@ -1673,11 +1756,11 @@ function previewProduto(pi) {
     fmt(p.colMin, 1) + ') · gramatura <b>' + fmt0(g) + '</b> g/m²' +
     (col / 10 < p.colMin ? ' — <span class="est">abaixo do mínimo</span>' : '');
 }
-function mudaPapel(i, campo, v) { db.papeis[i][campo] = +v; if (campo === 'rct') delete db.papeis[i].est; salva(); desenhaTabelas(); }
+function mudaPapel(i, campo, v) { db.papeis[i][campo] = +v; if (campo === 'rct') delete db.papeis[i].est; salvaConfig(); desenhaTabelas(); }
 function delPapel(i) {
   const cod = db.papeis[i].cod;
   if (db.produtos.some(p => p.rec.includes(cod))) { alert('Este papel está em uso numa receita.'); return; }
-  if (confirm('Remover ' + cod + '?')) { db.papeis.splice(i, 1); salva(); desenhaTabelas(); }
+  if (confirm('Remover ' + cod + '?')) { db.papeis.splice(i, 1); salvaConfig(); desenhaTabelas(); }
 }
 function addPapel() {
   const cod = prompt('Código do papel (ex.: TLQ150):');
@@ -1685,10 +1768,10 @@ function addPapel() {
   const g = +prompt('Gramatura (g/m²):') || 0;
   const rct = +prompt('RCT (kgf):') || 0;
   db.papeis.push({ cod: cod.trim(), g, rct });
-  salva(); desenhaTabelas();
+  salvaConfig(); desenhaTabelas();
 }
-function mudaReceita(pi, i, v) { db.produtos[pi].rec[i] = v; salva(); previewProduto(pi); }
-function mudaProduto(pi, campo, v) { db.produtos[pi][campo] = +v; salva(); previewProduto(pi); }
+function mudaReceita(pi, i, v) { db.produtos[pi].rec[i] = v; salvaConfig(); previewProduto(pi); }
+function mudaProduto(pi, campo, v) { db.produtos[pi][campo] = +v; salvaConfig(); previewProduto(pi); }
 function salvaParams() {
   db.params.velocidade = +$('pVel').value || 60;
   db.params.fatorMiolo = +$('pFator').value || 1.3;
@@ -1705,7 +1788,7 @@ function salvaParams() {
     sobra: +$('pSobra').value || 200, folga: +$('pFolga').value || 40,
     padroes: $('pPadroes').value.split(/[,;\s]+/).map(Number).filter(n => n > 0).sort((a, b) => a - b)
   };
-  salva();
+  salvaConfig();
   $('velChip').textContent = db.params.velocidade + ' m/min';
   alert('Parâmetros salvos. Os cálculos de todas as OFs já usam os novos valores.');
 }
@@ -1722,21 +1805,25 @@ function importaJSON(inp) {
     try {
       const d = JSON.parse(r.result);
       if (!d.params || !d.papeis) throw 0;
-      db = d; salva(); desenhaProg(); desenhaTabelas(); alert('Backup restaurado.');
+      mutaServidor('/importar', { db: d })
+        .then(() => { desenhaTabelas(); alert('Backup restaurado no servidor (os contadores de OF/OP nunca voltam atrás).'); })
+        .catch(e => alert('Não foi possível restaurar: ' + e.message));
     } catch (e) { alert('Arquivo inválido.'); }
   };
   r.readAsText(f);
   inp.value = '';
 }
-function limpaOFs() {
+async function limpaOFs() {
   if (!db.ofs.length) { alert('A programação já está vazia.'); return; }
-  if (confirm('Apagar todas as ' + db.ofs.length + ' OFs da programação?\n(Papéis, produtos e parâmetros são mantidos.)')) {
-    db.ofs = []; db.ofAtual = null; salva(); desenhaProg();
+  if (confirm('Apagar todas as ' + db.ofs.length + ' OFs da programação em TODOS os aparelhos?\n(Papéis, produtos e parâmetros são mantidos; a numeração de OF/OP continua de onde parou.)')) {
+    try { await mutaServidor('/ofs/limpar', {}); }
+    catch (e) { alert('Não foi possível limpar a programação: ' + e.message); }
   }
 }
-function zeraTudo() {
-  if (confirm('Apagar TODAS as OFs e restaurar as tabelas padrão?') && confirm('Tem certeza? Não dá para desfazer.')) {
-    db = JSON.parse(JSON.stringify(SEED)); salva(); desenhaProg(); desenhaTabelas();
+async function zeraTudo() {
+  if (confirm('Apagar TODAS as OFs e restaurar as tabelas padrão (em todos os aparelhos)?') && confirm('Tem certeza? Não dá para desfazer.')) {
+    try { await mutaServidor('/importar', { db: JSON.parse(JSON.stringify(SEED)) }); desenhaTabelas(); }
+    catch (e) { alert('Não foi possível restaurar o padrão: ' + e.message); }
   }
 }
 
@@ -2703,6 +2790,9 @@ montaProdutos();
 limpaForm();
 desenhaProg();
 trocaAba('prog');
+sincronizaInicial();
+setInterval(verificaServidor, 15000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) verificaServidor(); });
 tentaReconectarPastaProducao();
 tentaReconectarPastaFila();
 if ('serviceWorker' in navigator && location.protocol.startsWith('http'))
