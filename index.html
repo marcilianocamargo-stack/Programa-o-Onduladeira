@@ -2491,14 +2491,15 @@ function verificaDuplicidade() {
   if (!el) return;
   if ($('fEditId') && $('fEditId').value) { el.innerHTML = ''; return; }
   const d = achaDuplicados();
-  if (!d) { el.innerHTML = ''; return; }
-  const lista = d.achados.slice(0, 5).map(l => '<li>' + descreveDup(l) + '</li>').join('');
+  /* Mesma OC com medida diferente é outro item do mesmo pedido (normal: o cliente
+     manda vários itens na mesma OC) — só avisa quando a medida também bate. */
+  if (!d || !d.fortes.length) { el.innerHTML = ''; return; }
+  const lista = d.fortes.slice(0, 5).map(l => '<li>' + descreveDup(l) + '</li>').join('');
   el.innerHTML = '<div class="aviso ruim">🚨 <b>Possível duplicidade</b> — ' +
-    (d.oc ? 'este cliente já tem a OC <b>' + d.oc + '</b> lançada' : 'este cliente já tem um pedido com a mesma medida e quantidade') +
+    (d.oc ? 'este cliente já tem a OC <b>' + d.oc + '</b> lançada com a mesma medida' : 'este cliente já tem um pedido com a mesma medida e quantidade') +
     ':<ul style="margin:4px 0 0 18px;padding:0">' + lista + '</ul>' +
-    (d.achados.length > 5 ? '<div>… e mais ' + (d.achados.length - 5) + '.</div>' : '') +
-    '<div style="margin-top:4px">Confira antes de lançar de novo' +
-    (d.fortes.length ? ' — <b>a medida é a mesma</b>.' : ' (a medida é diferente: pode ser outro item da mesma OC).') + '</div></div>';
+    (d.fortes.length > 5 ? '<div>… e mais ' + (d.fortes.length - 5) + '.</div>' : '') +
+    '<div style="margin-top:4px">Confira antes de lançar de novo.</div></div>';
 }
 
 /* ---------- início ---------- */
