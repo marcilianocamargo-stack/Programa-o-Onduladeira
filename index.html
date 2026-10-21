@@ -1023,7 +1023,7 @@ async function salvaOF(ev) {
   if (!of.id && !idNovoPendente) {   // pedido novo (e não um reenvio): confere duplicidade antes de gastar a OP
     const d = achaDuplicados();
     if (d && d.fortes.length && !confirm('🚨 POSSÍVEL DUPLICIDADE\n\n' +
-        (d.oc ? 'Este cliente já tem a OC ' + d.oc + ' com a mesma medida:' : 'Este cliente já tem um pedido com a mesma medida e quantidade:') +
+        (d.oc ? 'Este cliente já tem a OC ' + d.oc + ' com a mesma medida, papel e vinco:' : 'Este cliente já tem um pedido com a mesma medida e quantidade:') +
         '\n\n' + d.fortes.slice(0, 4).map(l => '• ' + descreveDup(l)).join('\n') +
         '\n\nLançar mesmo assim?')) return false;
   }
@@ -2348,6 +2348,9 @@ function extraiLinhasFilaXLSX(sheet, arquivo) {
     }
   }
   if (hIdx < 0 || colLarg == null || colCompr == null) return [];
+  const colPO = colMap['P.O.'];
+  const kVinco = Object.keys(colMap).find(k => k.startsWith('SLITER') || k.startsWith('SLITTER'));
+  const colVinco = kVinco ? colMap[kVinco] : null;
   const linhas = [];
   for (let i = hIdx + 1; i < aoa.length; i++) {
     const row = aoa[i];
@@ -2361,6 +2364,8 @@ function extraiLinhasFilaXLSX(sheet, arquivo) {
       data: dataCelula(row[colMap['DATA PEDIDO']]),
       largMM: Math.round(larg * 1000), comprMM: Math.round(compr * 1000),
       qtde: +row[colMap['QTDE PEDIDO']] || 0,
+      po: colPO == null ? '' : String(row[colPO] == null ? '' : row[colPO]).trim(),
+      vinco: colVinco == null ? '' : String(row[colVinco] == null ? '' : row[colVinco]).trim(),
       arquivo
     });
   }
@@ -2410,7 +2415,7 @@ async function carregaDuplicidade(forca) {
       mapa.set(normOC(i.op) + '|' + i.larg + '|' + i.comp, {
         cliente: i.cliente || '', oc: i.oc || '', data: i.data || '',
         largMM: i.larg, comprMM: i.comp, qtde: i.qtde || 0, produzido: i.prod || 0,
-        origem: 'produzido'
+        po: i.papel || '', origem: 'produzido'
       });
     }));
     indiceProducao = [...mapa.values()];
@@ -2446,13 +2451,21 @@ function atualizaStatusDuplicidade() {
 function itensDaProgramacao() {
   return db.ofs.filter(o => !o.cancelada).map(o => ({
     cliente: o.cliente, oc: o.oc || '', data: dataBR(o.data),
-    largMM: o.larg, comprMM: o.compr, qtde: o.qtde, op: o.of, origem: 'programacao'
+    largMM: o.larg, comprMM: o.compr, qtde: o.qtde, op: o.of,
+    po: poCodigo(o), vinco: o.vinco || '', origem: 'programacao'
   }));
 }
 
+/* Vinco só pelos números ("73 x 620 x 73" == "73x620x73"; "x"/vazio = liso). */
+const normVinco = s => String(s || '').toLowerCase().replace(/,/g, '.').split('x')
+  .map(t => t.trim()).filter(t => t !== '').join('x');
+const normPO = s => String(s || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+
 /* Procura no que já existe o mesmo Cliente + OC (ou, sem OC, Cliente + medida +
-   quantidade). Devolve { achados, fortes } ou null. "fortes" = achados com a
-   mesma medida do formulário (duplicidade provável). */
+   quantidade). Devolve { achados, fortes } ou null. "fortes" = achados que são
+   o mesmo item do formulário: mesma medida, mesmo papel (P.O.) e mesmo vinco.
+   Papel/vinco só descartam quando os dois lados têm a informação (a produção
+   não guarda vinco; se faltar dos dois lados, continua avisando). */
 function achaDuplicados() {
   const clienteForm = $('fCliente').value;
   if (!clienteForm.trim()) return null;
@@ -2463,22 +2476,35 @@ function achaDuplicados() {
   else if (larg && compr && qtde) teste = l => clienteBate(l.cliente, clienteForm) &&
     l.largMM === larg && l.comprMM === compr && l.qtde === qtde;
   else return null;
-  const vistos = new Set(), achados = [];
-  [].concat(indiceProducao || [], indiceFila || [], itensDaProgramacao()).forEach(l => {
-    if (!teste(l)) return;
-    const k = [normTxtDup(l.cliente), normOC(l.oc), l.largMM, l.comprMM, l.qtde].join('|');
-    if (vistos.has(k)) return;    // o mesmo pedido pode estar na programação e na fila
-    vistos.add(k); achados.push(l);
-  });
-  if (!achados.length) return null;
-  const fortes = achados.filter(l => !!oc ? (larg && compr && l.largMM === larg && l.comprMM === compr) : true);
-  return { achados, fortes, oc: $('fOC').value.trim() };
+  const [codForm, ondaForm] = String($('fProduto').value).split('|');
+  const poForm = normPO(codForm + (ondaForm === 'D' ? '' : (ondaForm || '')));
+  const vincoForm = normVinco($('fVinco').value);
+  const mesmoItem = l => {
+    if (oc && !(larg && compr && l.largMM === larg && l.comprMM === compr)) return false;
+    const po = normPO(l.po);
+    if (po && poForm && po !== poForm) return false;
+    if (l.vinco != null && l.vinco !== '' && normVinco(l.vinco) !== vincoForm) return false;
+    return true;
+  };
+  const tira = lista => {   // o mesmo pedido pode estar na programação, na fila e na produção
+    const vistos = new Set(), out = [];
+    lista.forEach(l => {
+      const k = [normTxtDup(l.cliente), normOC(l.oc), l.largMM, l.comprMM, l.qtde, normPO(l.po)].join('|');
+      if (vistos.has(k)) return;
+      vistos.add(k); out.push(l);
+    });
+    return out;
+  };
+  const todos = [].concat(indiceProducao || [], indiceFila || [], itensDaProgramacao()).filter(teste);
+  if (!todos.length) return null;
+  return { achados: tira(todos), fortes: tira(todos.filter(mesmoItem)), oc: $('fOC').value.trim() };
 }
 
 const ORIGEM_DUP = { produzido: 'já produzido', fila: 'na fila (ainda não produzido)', programacao: 'na programação atual' };
 function descreveDup(l) {
   return ORIGEM_DUP[l.origem] + ' — ' + l.qtde + ' chapas' +
     (l.largMM && l.comprMM ? ' · ' + l.largMM + ' × ' + l.comprMM + ' mm' : '') +
+    (l.po ? ' · ' + l.po : '') + (l.vinco && normVinco(l.vinco) ? ' · vinco ' + l.vinco : '') +
     (l.origem === 'produzido' && l.produzido != null ? ' · ' + l.produzido + ' produzidas' : '') +
     (l.op ? ' · OP ' + l.op : '') + (l.data ? ' · ' + l.data : '');
 }
@@ -2496,7 +2522,7 @@ function verificaDuplicidade() {
   if (!d || !d.fortes.length) { el.innerHTML = ''; return; }
   const lista = d.fortes.slice(0, 5).map(l => '<li>' + descreveDup(l) + '</li>').join('');
   el.innerHTML = '<div class="aviso ruim">🚨 <b>Possível duplicidade</b> — ' +
-    (d.oc ? 'este cliente já tem a OC <b>' + d.oc + '</b> lançada com a mesma medida' : 'este cliente já tem um pedido com a mesma medida e quantidade') +
+    (d.oc ? 'este cliente já tem a OC <b>' + d.oc + '</b> lançada com a mesma medida, papel e vinco' : 'este cliente já tem um pedido com a mesma medida e quantidade') +
     ':<ul style="margin:4px 0 0 18px;padding:0">' + lista + '</ul>' +
     (d.fortes.length > 5 ? '<div>… e mais ' + (d.fortes.length - 5) + '.</div>' : '') +
     '<div style="margin-top:4px">Confira antes de lançar de novo.</div></div>';
