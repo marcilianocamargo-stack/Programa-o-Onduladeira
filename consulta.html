@@ -56,6 +56,10 @@ input:focus{outline:2px solid var(--kraft);outline-offset:0;border-color:var(--k
 .resultado.fila{background:var(--fila-bg);border-color:#e6cf7a;color:var(--fila)}
 .resultado.nada{background:var(--papel);border-color:var(--linha);color:var(--tinta2)}
 .resultado h3{font-family:'Barlow Condensed';font-size:19px;text-transform:uppercase;letter-spacing:.03em;margin-bottom:6px}
+.resumoOF{background:#fff;border:1.5px solid var(--linha);border-radius:10px;padding:12px 14px;margin-top:6px;font-size:14px}
+.resumoOF .falta{color:var(--fila)}
+.avisoFiltro{margin-top:8px;padding:8px 10px;border-radius:8px;background:var(--fila-bg);border:1px solid #e6cf7a;color:var(--fila);font-size:13px}
+.avisoFiltro .btn{margin-top:6px}
 .itemAchado{background:rgba(255,255,255,.55);border-radius:8px;padding:8px 10px;margin-top:8px;font-size:13.5px}
 .itemAchado b{display:block;font-family:'Barlow Condensed';font-size:15px}
 .itemAchado span{color:var(--tinta2)}
@@ -371,12 +375,13 @@ function buscar(ev) {
   // não substituem um ao outro.
   if (!oc && !op_ && !of_ && !medidaOk && !clienteOk) { $('resultados').innerHTML = ''; return false; }
 
-  function acha(lista) {
+  function acha(lista, soOF) {
     if (!lista || !lista.length) return [];
     return lista.filter(l => {
+      if (of_ && normOC(l.of) !== of_) return false;
+      if (soOF) return true; // visão da OF inteira: ignora os outros campos
       if (oc && normOC(l.oc) !== oc) return false;
       if (op_ && normOC(l.op) !== op_) return false;
-      if (of_ && normOC(l.of) !== of_) return false;
       if (medidaOk && (l.largMM !== larg || l.comprMM !== compr)) return false;
       if (medidaOk && qtde && l.qtde !== qtde) return false;
       if (cliente.trim() && !clienteBate(l.cliente, cliente)) return false;
@@ -384,21 +389,40 @@ function buscar(ev) {
     });
   }
 
-  const achadosProduzido = acha(indiceProducao);
   // A planilha de programação (fila) às vezes continua com o pedido depois
   // dele já ter sido produzido (não é atualizada automaticamente). Se achar
   // a mesma OC + medida + quantidade nos dois lados, é o mesmo pedido — some
   // com o "na fila" e mostra só "já produzido", pra não parecer duplicidade.
-  const achadosFila = acha(indiceFila).filter(f => !achadosProduzido.some(p =>
-    normOC(p.oc) === normOC(f.oc) && p.largMM === f.largMM && p.comprMM === f.comprMM &&
-    p.qtde === f.qtde && clienteBate(p.cliente, f.cliente)
-  ) && !(f.op && achadosProduzido.some(p =>
-    normOC(p.op) === normOC(f.op) && p.largMM === f.largMM && p.comprMM === f.comprMM
-  )));
+  function filaPendente(fila, produzidos) {
+    return fila.filter(f => !produzidos.some(p =>
+      normOC(p.oc) === normOC(f.oc) && p.largMM === f.largMM && p.comprMM === f.comprMM &&
+      p.qtde === f.qtde && clienteBate(p.cliente, f.cliente)
+    ) && !(f.op && produzidos.some(p =>
+      normOC(p.op) === normOC(f.op) && p.largMM === f.largMM && p.comprMM === f.comprMM
+    )));
+  }
+
+  const achadosProduzido = acha(indiceProducao);
+  const achadosFila = filaPendente(acha(indiceFila), achadosProduzido);
+
+  // Busca por OF: mostra o resumo da OF inteira (quantas OPs, quantas produzidas,
+  // quais faltam) e avisa se algum outro campo preenchido está escondendo OPs.
+  let resumoOF = null;
+  if (of_) {
+    const prodOF = acha(indiceProducao, true);
+    const filaOF = filaPendente(acha(indiceFila, true), prodOF);
+    if (prodOF.length || filaOF.length) {
+      const escondidos = (prodOF.length - achadosProduzido.length) + (filaOF.length - achadosFila.length);
+      const campos = [];
+      if (oc) campos.push('OC'); if (op_) campos.push('OP'); if (medidaOk) campos.push('medida' + (qtde ? ' + qtde' : ''));
+      if (cliente.trim()) campos.push('cliente');
+      resumoOF = { of: $('bOF').value.trim(), prod: prodOF.length, fila: filaOF.length, faltam: filaOF, escondidos, campos };
+    }
+  }
   ultimoAchadosProduzido = achadosProduzido;
   ultimoAchadosFila = achadosFila;
   ultimoClienteBuscado = cliente.trim();
-  renderResultado(achadosProduzido, achadosFila);
+  renderResultado(achadosProduzido, achadosFila, resumoOF);
   return false;
 }
 
@@ -413,14 +437,37 @@ function linhaItem(l) {
     (l.status === 'fila' ? ' · <i>' + l.arquivo + '</i>' : '') + '</span></div>';
 }
 
-function renderResultado(produzidos, fila) {
+function limpaFiltrosExtras() {
+  ['bOC', 'bOP', 'bLarg', 'bCompr', 'bQtde', 'bCliente'].forEach(id => { $(id).value = ''; });
+  buscar();
+}
+
+function htmlResumoOF(r) {
+  if (!r) return '';
+  const total = r.prod + r.fila;
+  let h = '<div class="resumoOF"><b>OF ' + r.of + '</b> — ' + total + ' OP' + (total > 1 ? 's' : '') + ' no total: ' +
+    '<b>' + r.prod + ' já produzida' + (r.prod !== 1 ? 's' : '') + '</b>' +
+    (r.fila ? ' · <b class="falta">' + r.fila + ' faltando produzir</b> (OP ' + r.faltam.map(l => l.op || '?').join(', ') + ')' : ' · nenhuma faltando');
+  if (r.escondidos > 0) {
+    h += '<div class="avisoFiltro">⚠️ Está filtrando também por <b>' + r.campos.join(' + ') + '</b> — ' + r.escondidos +
+      ' OP' + (r.escondidos > 1 ? 's' : '') + ' desta OF não aparece' + (r.escondidos > 1 ? 'm' : '') + ' abaixo. ' +
+      '<button type="button" class="btn mini sec" onclick="limpaFiltrosExtras()">Ver a OF inteira</button></div>';
+  }
+  return h + '</div>';
+}
+
+function renderResultado(produzidos, fila, resumoOF) {
   const box = $('resultados');
+  if (!produzidos.length && !fila.length && resumoOF && resumoOF.escondidos > 0) {
+    box.innerHTML = htmlResumoOF(resumoOF);
+    return;
+  }
   if (!produzidos.length && !fila.length) {
     box.innerHTML = '<div class="resultado nada"><h3>Não encontrado</h3>' +
       '<p>Não achei esse pedido nem na produção já feita, nem na fila. Confira se os dois indicadores acima estão verdes (dados carregados) e se a OC/cliente/medida estão certos.</p></div>';
     return;
   }
-  let html = '';
+  let html = htmlResumoOF(resumoOF);
   if (produzidos.length) {
     html += '<div class="resultado produzido"><h3>✅ Já produzido</h3>' +
       produzidos.map(linhaItem).join('') +
