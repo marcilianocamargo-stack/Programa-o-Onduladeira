@@ -63,6 +63,10 @@ input:focus{outline:2px solid var(--kraft);outline-offset:0;border-color:var(--k
 .itemAchado{background:rgba(255,255,255,.55);border-radius:8px;padding:8px 10px;margin-top:8px;font-size:13.5px}
 .itemAchado b{display:block;font-family:'Barlow Condensed';font-size:15px}
 .itemAchado span{color:var(--tinta2)}
+.itemAchado.parcial{background:#ffe0bd;border-left:5px solid #e8751a}
+.itemAchado.parcial b,.itemAchado.parcial span{color:#9a4a00}
+.itemAchado .tagParcial{display:inline-block;margin-top:4px;font-weight:700;color:#b85a00}
+.resumoOF .parcial{color:#c8620a}
 </style>
 </head>
 <body>
@@ -416,7 +420,7 @@ function buscar(ev) {
       const campos = [];
       if (oc) campos.push('OC'); if (op_) campos.push('OP'); if (medidaOk) campos.push('medida' + (qtde ? ' + qtde' : ''));
       if (cliente.trim()) campos.push('cliente');
-      resumoOF = { of: $('bOF').value.trim(), prod: prodOF.length, fila: filaOF.length, faltam: filaOF, escondidos, campos };
+      resumoOF = { of: $('bOF').value.trim(), prod: prodOF.length, parciais: prodOF.filter(ehParcial).length, fila: filaOF.length, faltam: filaOF, escondidos, campos };
     }
   }
   ultimoAchadosProduzido = achadosProduzido;
@@ -426,15 +430,24 @@ function buscar(ev) {
   return false;
 }
 
+/* Produzida mas abaixo de 90% do pedido = ainda não totalizada: aparece em
+   "já produzido" (a produção existe), só que em laranja. Mesmo corte de 90%
+   usado pela baixa automática da Agenda. */
+function ehParcial(l) {
+  return l.status === 'produzido' && l.qtde > 0 && l.produzido != null && l.produzido < l.qtde * 0.9;
+}
+
 function linhaItem(l) {
   const qtdeTxt = l.produzido != null
     ? l.qtde + ' pedidas · ' + l.produzido + ' produzidas'
     : l.qtde + ' chapas';
-  return '<div class="itemAchado"><b>' + l.cliente + '</b>' +
+  const parcial = ehParcial(l);
+  return '<div class="itemAchado' + (parcial ? ' parcial' : '') + '"><b>' + l.cliente + '</b>' +
     '<span>' + (l.of ? 'OF ' + l.of + ' · ' : '') + (l.oc ? 'OC ' + l.oc + ' · ' : '') + (l.op ? 'OP ' + l.op + ' · ' : '') + (l.papel ? l.papel + ' · ' : '') +
     l.largMM + '×' + l.comprMM + ' mm · ' + qtdeTxt +
     (l.data ? ' · ' + l.data + (l.hora ? ' ' + l.hora : '') : '') +
-    (l.status === 'fila' ? ' · <i>' + l.arquivo + '</i>' : '') + '</span></div>';
+    (l.status === 'fila' ? ' · <i>' + l.arquivo + '</i>' : '') + '</span>' +
+    (parcial ? '<span class="tagParcial">⚠️ Parcial: ' + Math.round(l.produzido / l.qtde * 100) + '% do pedido — ainda não totalizada</span>' : '') + '</div>';
 }
 
 function limpaFiltrosExtras() {
@@ -447,6 +460,7 @@ function htmlResumoOF(r) {
   const total = r.prod + r.fila;
   let h = '<div class="resumoOF"><b>OF ' + r.of + '</b> — ' + total + ' OP' + (total > 1 ? 's' : '') + ' no total: ' +
     '<b>' + r.prod + ' já produzida' + (r.prod !== 1 ? 's' : '') + '</b>' +
+    (r.parciais ? ' (<b class="parcial">' + r.parciais + ' parcial' + (r.parciais > 1 ? 'is' : '') + ', abaixo de 90%</b>)' : '') +
     (r.fila ? ' · <b class="falta">' + r.fila + ' faltando produzir</b> (OP ' + r.faltam.map(l => l.op || '?').join(', ') + ')' : ' · nenhuma faltando');
   if (r.escondidos > 0) {
     h += '<div class="avisoFiltro">⚠️ Está filtrando também por <b>' + r.campos.join(' + ') + '</b> — ' + r.escondidos +
