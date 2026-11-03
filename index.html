@@ -178,7 +178,7 @@ details .corpo{padding:10px 0}
       <button class="btn sec" onclick="abreInputFilaOCR()">Fila OCR</button>
       <button class="btn" onclick="exportaXLSX()">Excel por Bobina</button>
       <button class="btn" onclick="exportaXLSXporOC()">Excel por OC</button>
-      <button class="btn" onclick="xlsxOperadores()">Excel Operadores</button>
+      <button class="btn" onclick="exportaXLSXporMedida()">Excel por Medidas</button>
       <button class="btn sec" onclick="window.print()">Imprimir</button>
       <button class="btn perigo" onclick="limpaOFs()">Limpar programação</button>
     </div>
@@ -1223,6 +1223,17 @@ function sortOFsDiaPorOC(ofs) {
   });
 }
 
+function sortOFsDiaPorMedida(ofs) {
+  // Para estoque curto de bobinas: 1. Tipo de papel (receita de papéis)  2. dentro do papel,
+  // medidas vizinhas juntas: largura da chapa → comprimento → nº OF
+  const chavePapel = o => (o.papeis || []).join('|');
+  return ofs.slice().sort((a, b) => {
+    const pc = chavePapel(a).localeCompare(chavePapel(b), 'pt-BR', { numeric: true });
+    if (pc !== 0) return pc;
+    return ((+b.larg || 0) - (+a.larg || 0)) || ((+b.compr || 0) - (+a.compr || 0)) || (+a.of - +b.of);
+  });
+}
+
 function mprOF(of) {
   // metros-de-chapa que cada rolo físico aguenta por posição de papel
   const p = produto(of.produto);
@@ -1351,6 +1362,10 @@ function exportaXLSX() {
 
 function exportaXLSXporOC() {
   _exportaXLSX({ sortFn: sortOFsDiaPorOC });
+}
+
+function exportaXLSXporMedida() {
+  _exportaXLSX({ sortFn: sortOFsDiaPorMedida });
 }
 
 function _exportaXLSX(opcoes) {
