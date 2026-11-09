@@ -3,65 +3,69 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#0f1e2e">
+<meta name="theme-color" content="#1a56a0">
 <title>Consulta OC — Prime</title>
-<link rel="manifest" href="data:application/manifest+json;base64,eyJuYW1lIjoiQ29uc3VsdGEgT0MgUHJpbWUiLCJzaG9ydF9uYW1lIjoiQ29uc3VsdGEgT0MiLCJzdGFydF91cmwiOiJjb25zdWx0YS5odG1sIiwiZGlzcGxheSI6InN0YW5kYWxvbmUiLCJiYWNrZ3JvdW5kX2NvbG9yIjoiIzBmMWUyZSIsInRoZW1lX2NvbG9yIjoiIzFhM2E1YyIsImljb25zIjpbeyJzcmMiOiJkYXRhOmltYWdlL3N2Zyt4bWw7YmFzZTY0LFBITjJaeUI0Yld4dWN6MGlhSFIwY0RvdkwzZDNkeTUzTXk1dmNtY3ZNakF3TUM5emRtY2lJSFpwWlhkQ2IzZzlJakFnTUNBeE1EQWdNVEF3SWo0OGNtVmpkQ0IzYVdSMGFEMGlNVEF3SWlCb1pXbG5hSFE5SWpFd01DSWdjbmc5SWpFNElpQm1hV3hzUFNJak1HWXhaVEpsSWk4K1BHTnBjbU5zWlNCamVEMGlORElpSUdONVBTSTBNaUlnY2owaU1qSWlJR1pwYkd3OUltNXZibVVpSUhOMGNtOXJaVDBpSXpabFlUaGtZeUlnYzNSeWIydGxMWGRwWkhSb1BTSTRJaTgrUEd4cGJtVWdlREU5SWpVNElpQjVNVDBpTlRnaUlIZ3lQU0k0TUNJZ2VUSTlJamd3SWlCemRISnZhMlU5SWlNMlpXRTRaR01pSUhOMGNtOXJaUzEzYVdSMGFEMGlPU0lnYzNSeWIydGxMV3hwYm1WallYQTlJbkp2ZFc1a0lpOCtQQzl6ZG1jKyIsInNpemVzIjoiYW55IiwidHlwZSI6ImltYWdlL3N2Zyt4bWwiLCJwdXJwb3NlIjoiYW55In1dfQ==">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Barlow:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="manifest" href="data:application/manifest+json;base64,eyJuYW1lIjoiQ29uc3VsdGEgT0MgUHJpbWUiLCJzaG9ydF9uYW1lIjoiQ29uc3VsdGEgT0MiLCJzdGFydF91cmwiOiJjb25zdWx0YS5odG1sIiwiZGlzcGxheSI6InN0YW5kYWxvbmUiLCJiYWNrZ3JvdW5kX2NvbG9yIjoiIzFhNTZhMCIsInRoZW1lX2NvbG9yIjoiIzFhNTZhMCIsImljb25zIjpbeyJzcmMiOiJkYXRhOmltYWdlL3N2Zyt4bWw7YmFzZTY0LFBITjJaeUI0Yld4dWN6MGlhSFIwY0RvdkwzZDNkeTUzTXk1dmNtY3ZNakF3TUM5emRtY2lJSFpwWlhkQ2IzZzlJakFnTUNBeE1EQWdNVEF3SWo0OGNtVmpkQ0IzYVdSMGFEMGlNVEF3SWlCb1pXbG5hSFE5SWpFd01DSWdjbmc5SWpFNElpQm1hV3hzUFNJak1XRTFObUV3SWk4K1BHTnBjbU5zWlNCamVEMGlORElpSUdONVBTSTBNaUlnY2owaU1qSWlJR1pwYkd3OUltNXZibVVpSUhOMGNtOXJaVDBpSTJabVptWm1aaUlnYzNSeWIydGxMWGRwWkhSb1BTSTRJaTgrUEd4cGJtVWdlREU5SWpVNElpQjVNVDBpTlRnaUlIZ3lQU0k0TUNJZ2VUSTlJamd3SWlCemRISnZhMlU5SWlObVptWm1abVlpSUhOMGNtOXJaUzEzYVdSMGFEMGlPU0lnYzNSeWIydGxMV3hwYm1WallYQTlJbkp2ZFc1a0lpOCtQQzl6ZG1jKyIsInNpemVzIjoiYW55IiwidHlwZSI6ImltYWdlL3N2Zyt4bWwiLCJwdXJwb3NlIjoiYW55In1dfQ==">
 <script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js"></script>
 <style>
+/* Padrão visual dos apps da Prime (igual ao Orçamento de Chapas e à Programação): azul #1a56a0 e branco */
 :root{
-  --papel:#eef2f7; --cartao:#ffffff; --tinta:#0f1e2e; --tinta2:#51637a;
-  --kraft:#1a3a5c; --kraft-claro:#dbe7f3; --linha:#ccd8e4;
-  --ok:#2e7d4f; --alerta:#c23b22; --alerta-bg:#fbeae6; --ok-bg:#e8f3ec;
-  --fila:#8a6400; --fila-bg:#fff3cd;
+  --papel:#d6e4f4; --cartao:#ffffff; --tinta:#1b2b40; --tinta2:#4a6a8f; --tinta3:#7a92ac;
+  --kraft:#1a56a0; --kraft-claro:#eef4ff; --campo:#f4f8ff; --borda:#b8cfe8; --linha:#dce8fa; --linha2:#eef3fa;
+  --ok:#2e7d32; --alerta:#c62828; --alerta-bg:#fdecea; --ok-bg:#e8f5e9;
+  --fila:#9a6400; --fila-bg:#fff6dc;
 }
 *{box-sizing:border-box;margin:0;padding:0}
 html{-webkit-text-size-adjust:100%}
-body{padding-bottom:30px;font-family:'Barlow',system-ui,sans-serif;background:var(--papel);
-  color:var(--tinta);font-size:15px;line-height:1.45}
-h1,h2,h3{font-family:'Barlow Condensed','Barlow',sans-serif}
-header{background:var(--tinta);color:#fff;padding:12px 16px;display:flex;align-items:baseline;
-  justify-content:space-between;gap:8px;position:sticky;top:0;z-index:20}
-header h1{font-size:21px;font-weight:700;letter-spacing:.04em;text-transform:uppercase}
-header h1 small{color:#6ea8dc;font-weight:600}
-header a{color:#9fc4e8;font-size:12.5px;text-decoration:none}
-main{max-width:640px;margin:0 auto;padding:14px 12px 30px}
-.card{background:var(--cartao);border:1px solid var(--linha);border-radius:10px;padding:14px;margin-bottom:12px}
-label{display:block;font-size:12.5px;font-weight:600;color:var(--tinta2);
-  text-transform:uppercase;letter-spacing:.04em;margin:10px 0 3px}
-input{width:100%;padding:9px 10px;border:1px solid var(--linha);border-radius:7px;
-  font:inherit;background:#fff;color:var(--tinta)}
-input:focus{outline:2px solid var(--kraft);outline-offset:0;border-color:var(--kraft)}
-.row{display:flex;gap:10px}.row>*{flex:1;min-width:0}
-.btn{display:inline-block;border:0;border-radius:8px;padding:11px 18px;cursor:pointer;
-  font-family:'Barlow Condensed';font-size:17px;font-weight:600;letter-spacing:.04em;
-  text-transform:uppercase;background:var(--kraft);color:#fff}
-.btn.sec{background:transparent;color:var(--tinta);border:1.5px solid var(--tinta)}
-.btn.mini{padding:6px 12px;font-size:14px}
-.acoes{display:flex;gap:10px;margin-top:14px;flex-wrap:wrap}
-.nota{font-size:12.5px;color:var(--tinta2);margin-top:6px}
+body{font-family:'Segoe UI',Arial,sans-serif;background:var(--papel);color:var(--tinta);
+  font-size:15px;line-height:1.45;padding-bottom:30px;min-height:100vh}
 
-.fila-chip{display:inline-flex;align-items:center;gap:4px;padding:4px 8px;cursor:pointer;
-  border-radius:20px;border:1.5px solid var(--linha);background:var(--papel);
-  font-size:10.5px;font-weight:600;white-space:nowrap;transition:all .15s;user-select:none}
-.fila-chip:hover{background:var(--kraft-claro)}
-.fila-chip.ok{border-color:#bcd9c6;background:var(--ok-bg);color:var(--ok)}
-.fila-chip.pul{border-color:#e8b3a8;background:var(--alerta-bg);color:var(--alerta);opacity:.75}
+/* cabeçalho em cartão azul */
+.topo{max-width:640px;margin:0 auto;padding:14px 12px 0}
+.header{background:var(--kraft);border-radius:16px;padding:16px 18px;display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.logo-box{width:46px;height:46px;border-radius:10px;flex-shrink:0;background:#fff;display:flex;align-items:center;justify-content:center}
+.logo-box svg{width:34px;height:34px}
+.header-txt{flex:1;min-width:150px}
+.header-txt h1{color:#fff;font-size:21px;font-weight:700;line-height:1.2}
+.header-txt p{color:#a8c8f0;font-size:14px;margin-top:3px}
+.header a{background:#fff;color:var(--kraft);border-radius:8px;padding:8px 14px;font-size:14px;font-weight:800;
+  text-decoration:none;white-space:nowrap}
+main{max-width:640px;margin:0 auto;padding:14px 12px 30px}
+.card{background:var(--cartao);border-radius:14px;padding:16px;margin-bottom:14px;box-shadow:0 2px 10px rgba(0,0,0,.08)}
+label{display:block;font-size:11.5px;font-weight:700;color:var(--tinta2);
+  text-transform:uppercase;letter-spacing:.4px;margin:10px 0 4px}
+input{width:100%;padding:9px 11px;border:2px solid var(--borda);border-radius:10px;
+  font:inherit;background:var(--campo);color:var(--tinta);outline:none}
+input:focus{border-color:var(--kraft);background:#fff}
+.row{display:flex;gap:10px;align-items:flex-end}.row>*{flex:1;min-width:0}
+.btn{display:inline-block;border:2px solid var(--kraft);border-radius:8px;padding:9px 18px;cursor:pointer;
+  font:inherit;font-size:15px;font-weight:700;background:var(--kraft);color:#fff}
+.btn.sec{background:var(--campo);color:var(--kraft);border-color:var(--borda)}
+.btn.sec:hover{border-color:var(--kraft)}
+.btn.mini{padding:5px 12px;font-size:13px}
+.acoes{display:flex;gap:10px;margin-top:14px;flex-wrap:wrap}
+.nota{font-size:13px;color:var(--tinta2);margin-top:6px}
+
+.fila-chip{display:inline-flex;align-items:center;gap:4px;padding:4px 10px;cursor:pointer;
+  border-radius:20px;border:1.5px solid var(--borda);background:var(--campo);color:var(--tinta);
+  font-size:11px;font-weight:600;white-space:nowrap;transition:all .15s;user-select:none}
+.fila-chip:hover{background:var(--kraft-claro);border-color:var(--kraft)}
+.fila-chip.ok{border-color:#c3e3c5;background:var(--ok-bg);color:var(--ok)}
+.fila-chip.pul{border-color:#f3c1bc;background:var(--alerta-bg);color:var(--alerta);opacity:.75}
 .statusRow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px}
 .statusRow .fila-chip{white-space:normal}
 
-.resultado{border-radius:10px;padding:14px;margin-top:6px;border:1.5px solid}
-.resultado.produzido{background:var(--ok-bg);border-color:#bcd9c6;color:#1d5436}
-.resultado.fila{background:var(--fila-bg);border-color:#e6cf7a;color:var(--fila)}
-.resultado.nada{background:var(--papel);border-color:var(--linha);color:var(--tinta2)}
-.resultado h3{font-family:'Barlow Condensed';font-size:19px;text-transform:uppercase;letter-spacing:.03em;margin-bottom:6px}
-.resumoOF{background:#fff;border:1.5px solid var(--linha);border-radius:10px;padding:12px 14px;margin-top:6px;font-size:14px}
+.resultado{border-radius:14px;padding:14px 16px;margin-top:10px;border:1.5px solid}
+.resultado.produzido{background:var(--ok-bg);border-color:#c3e3c5;color:#1b5e20}
+.resultado.fila{background:var(--fila-bg);border-color:#f0d78c;color:var(--fila)}
+.resultado.nada{background:var(--cartao);border-color:var(--borda);color:var(--tinta2)}
+.resultado h3{font-size:17px;font-weight:800;margin-bottom:6px}
+.resumoOF{background:#fff;border:1.5px solid var(--borda);border-radius:10px;padding:12px 14px;margin-top:6px;font-size:14px}
 .resumoOF .falta{color:var(--fila)}
-.avisoFiltro{margin-top:8px;padding:8px 10px;border-radius:8px;background:var(--fila-bg);border:1px solid #e6cf7a;color:var(--fila);font-size:13px}
+.avisoFiltro{margin-top:8px;padding:8px 10px;border-radius:8px;background:var(--fila-bg);border:1px solid #f0d78c;color:var(--fila);font-size:13px}
 .avisoFiltro .btn{margin-top:6px}
-.itemAchado{background:rgba(255,255,255,.55);border-radius:8px;padding:8px 10px;margin-top:8px;font-size:13.5px}
-.itemAchado b{display:block;font-family:'Barlow Condensed';font-size:15px}
+.itemAchado{background:rgba(255,255,255,.6);border-radius:8px;padding:8px 10px;margin-top:8px;font-size:13.5px}
+.itemAchado b{display:block;font-size:14.5px;font-weight:700}
 .itemAchado span{color:var(--tinta2)}
 .itemAchado.parcial{background:#ffe0bd;border-left:5px solid #e8751a}
 .itemAchado.parcial b,.itemAchado.parcial span{color:#9a4a00}
@@ -70,10 +74,13 @@ input:focus{outline:2px solid var(--kraft);outline-offset:0;border-color:var(--k
 </style>
 </head>
 <body>
-<header>
-  <h1>Consulta OC <small>· Prime</small></h1>
-  <a href="index.html">← Programação</a>
-</header>
+<div class="topo">
+  <header class="header">
+    <div class="logo-box"><svg viewBox="0 0 100 100" aria-hidden="true"><circle cx="42" cy="42" r="24" fill="none" stroke="#1a56a0" stroke-width="10"/><line x1="60" y1="60" x2="84" y2="84" stroke="#1a56a0" stroke-width="11" stroke-linecap="round"/></svg></div>
+    <div class="header-txt"><h1>Consulta OC</h1><p>Prime Ondulados · produzido ou na fila</p></div>
+    <a href="index.html">← Programação</a>
+  </header>
+</div>
 <main>
   <div class="card">
     <p class="nota" style="margin-top:0">Consulta rápida: diz se um pedido já foi <b>produzido</b> ou ainda está <b>na fila de programação</b>. Lê direto do app de Controle de Produção (atualizado a cada palete etiquetado) e da programação do dia — não precisa conectar pastas e funciona em qualquer aparelho. Atualiza sozinho a cada minuto.</p>
