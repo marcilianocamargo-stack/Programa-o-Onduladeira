@@ -1,7 +1,7 @@
 /* Onduladeira Prime — service worker (versão para index.html único)
    Para forçar atualização nos aparelhos: mude o número da versão e faça o commit. */
-const VERSAO = 'onduladeira-v25';
-const ARQUIVOS = ['.', 'index.html'];
+const VERSAO = 'onduladeira-v26';
+const ARQUIVOS = ['.', 'index.html', 'manifest.json', 'icon-192.png', 'icon-512.png', 'icon-maskable-512.png'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(VERSAO).then(c => c.addAll(ARQUIVOS)).then(() => self.skipWaiting()));
