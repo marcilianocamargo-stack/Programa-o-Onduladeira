@@ -4,42 +4,17 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#1a56a0">
-<title>Consulta OC — app antigo</title>
-<script>
-/* A Consulta OC virou app próprio: https://marcilianocamargo-stack.github.io/consulta-oc/
-   Aberta numa aba do navegador (favorito antigo): vai direto para o endereço novo.
-   Aberta como app instalado: é o app ANTIGO da Consulta, que foi instalado a partir desta pasta e por isso
-   abria também a Programação dentro da janela dele. Aí não redireciona: mostra como desinstalar. */
-var NOVO = 'https://marcilianocamargo-stack.github.io/consulta-oc/';
-var mm = function (q) { return window.matchMedia && window.matchMedia(q).matches; };
-var instalado = mm('(display-mode: standalone)') || mm('(display-mode: minimal-ui)') ||
-  mm('(display-mode: window-controls-overlay)') || window.navigator.standalone === true;
-if (!instalado) location.replace(NOVO + location.search + location.hash);
-</script>
+<title>Consulta OC — novo endereço</title>
+<meta http-equiv="refresh" content="0; url=https://marcilianocamargo-stack.github.io/consulta-oc/">
+<script>location.replace('https://marcilianocamargo-stack.github.io/consulta-oc/' + location.search + location.hash);</script>
 <style>
-body{font-family:'Segoe UI',Arial,sans-serif;background:#d6e4f4;color:#1b2b40;margin:0;padding:32px 16px}
-.card{max-width:520px;margin:0 auto;background:#fff;border-radius:14px;padding:22px 24px;box-shadow:0 2px 10px rgba(0,0,0,.08)}
-h1{margin:0 0 10px;font-size:20px;color:#1a56a0}
-p,li{font-size:15px;line-height:1.5}
-ol{padding-left:22px;margin:10px 0 16px}
-li{margin-bottom:8px}
-a.bt{display:inline-block;background:#1a56a0;color:#fff;border-radius:8px;padding:10px 18px;font-weight:700;text-decoration:none}
-.nota{color:#4a6a8f;font-size:13px;margin-top:14px}
+body{font-family:'Segoe UI',Arial,sans-serif;background:#d6e4f4;color:#1b2b40;margin:0;padding:40px 16px;text-align:center}
+.card{max-width:440px;margin:0 auto;background:#fff;border-radius:14px;padding:22px;box-shadow:0 2px 10px rgba(0,0,0,.08)}
+a{display:inline-block;margin-top:12px;background:#1a56a0;color:#fff;border-radius:8px;padding:9px 18px;font-weight:700;text-decoration:none}
 </style>
 </head>
 <body>
-<div class="card">
-<h1>Este app da Consulta OC é o antigo</h1>
-<p>A Consulta OC agora é um app separado, com endereço próprio. Este app velho mistura a Consulta com a
-Programação da Onduladeira na mesma janela, por isso precisa sair.</p>
-<ol>
-<li>Desinstale este app: clique nos <b>⋮</b> no alto desta janela → <b>Desinstalar</b> (ou no botão
-<b>Desinstalar</b>, se ele aparecer ali).</li>
-<li>Abra a Consulta OC nova pelo botão abaixo e instale por lá, se quiser ela como app.</li>
-</ol>
-<a class="bt" href="https://marcilianocamargo-stack.github.io/consulta-oc/" target="_blank" rel="noopener">Abrir a Consulta OC nova</a>
-<p class="nota">A Programação da Onduladeira também é um app separado:
-https://marcilianocamargo-stack.github.io/Programa-o-Onduladeira/</p>
-</div>
+<div class="card">A Consulta OC mudou de endereço.<br>
+<a href="https://marcilianocamargo-stack.github.io/consulta-oc/">Abrir a Consulta OC</a></div>
 </body>
 </html>
